@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<lint>
+    <!--
+      lint 은 minSdk 가 26 이므로 mipmap-anydpi-v26 을 mipmap-anydpi 로 합치라고 권한다.
+      하지만 실제로 그렇게 바꾸면 AAPT2 가 mipmap/ic_launcher 를 찾지 못해 빌드가 깨진다.
+      (adaptive-icon 리소스는 -v26 한정자가 있어야 링크된다.) 그래서 이 경고만 끈다.
+    -->
+    <issue id="ObsoleteSdkInt">
+        <ignore path="src/main/res/mipmap-anydpi-v26" />
+    </issue>
+</lint>

@@ -1,0 +1,19 @@
+{
+  "features": {
+    "ghcr.io/devcontainers/features/java:1": {
+      "version": "1.8.3",
+      "resolved": "ghcr.io/devcontainers/features/java@sha256:61a839211feda1e2a1f10646648a948e733e4d98d770f3a4b6698a3c5fc92abe",
+      "integrity": "sha256:61a839211feda1e2a1f10646648a948e733e4d98d770f3a4b6698a3c5fc92abe"
+    },
+    "ghcr.io/mikaello/devcontainer-features/kotlinc:1": {
+      "version": "1.1.0",
+      "resolved": "ghcr.io/mikaello/devcontainer-features/kotlinc@sha256:5665da29c3e2453850bb3a91c51e7decb8e1c52919b1f3cba410919df2e6bc6b",
+      "integrity": "sha256:5665da29c3e2453850bb3a91c51e7decb8e1c52919b1f3cba410919df2e6bc6b"
+    },
+    "ghcr.io/siri404/devcontainer-ai-features/claude-code:1": {
+      "version": "1.0.1",
+      "resolved": "ghcr.io/siri404/devcontainer-ai-features/claude-code@sha256:e01d8c69a1a863388811b56e3afe4342a3a54d5ed79a4dc088794215b75a89b2",
+      "integrity": "sha256:e01d8c69a1a863388811b56e3afe4342a3a54d5ed79a4dc088794215b75a89b2"
+    }
+  }
+}

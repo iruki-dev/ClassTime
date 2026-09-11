@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ClassTime</string>
+    <string name="channel_recording_name">강의 녹음</string>
+    <string name="channel_recording_desc">수업 자동/수동 녹음이 진행 중일 때 표시됩니다.</string>
+    <string name="notif_recording_title">녹음 중</string>
+    <string name="notif_stop">정지</string>
+    <string name="notif_standby_title">ClassTime 대기 중</string>
+    <string name="channel_warning_name">녹음 경고</string>
+    <string name="channel_warning_desc">무음이 녹음되는 등 확인이 필요한 상황을 알립니다.</string>
+</resources>

@@ -1,0 +1,38 @@
+# --- Build output (any module, any depth) ---
+build/
+!gradle/wrapper/gradle-wrapper.jar
+*.class
+*.dex
+*.apk
+*.aab
+captures/
+.externalNativeBuild/
+.cxx/
+
+# --- Gradle ---
+.gradle/
+gradle-app.setting
+!gradle/wrapper/gradle-wrapper.properties
+
+# --- Local machine config (never shared) ---
+local.properties
+*.env
+
+# --- Android Studio / IntelliJ ---
+.idea/
+*.iml
+*.ipr
+*.iws
+.navigation/
+captures/
+
+# --- Signing keys (never commit real keys) ---
+*.jks
+*.keystore
+key.properties
+
+# --- OS / editor noise ---
+.DS_Store
+Thumbs.db
+*.hprof
+.kotlin/
