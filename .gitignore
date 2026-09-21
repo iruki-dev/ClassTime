@@ -26,10 +26,24 @@ local.properties
 .navigation/
 captures/
 
-# --- Signing keys (never commit real keys) ---
+# --- Signing keys & deployment secrets (never commit these) ---
 *.jks
 *.keystore
+*.p12
 key.properties
+keystore.properties
+!keystore.properties.example
+
+# Service account JSON for Firebase App Distribution, and anything else
+# secret. ./scripts/create-keystore.sh writes the keystore here by default.
+secrets/
+*-service-account*.json
+google-services.json
+firebase-credentials.json
+.build-env
+
+# On-device data pulled by scripts/phone-backup.sh (personal data)
+backups/
 
 # --- OS / editor noise ---
 .DS_Store
