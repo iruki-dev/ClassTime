@@ -7,17 +7,33 @@ import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.time.format.TextStyle
 import java.util.Locale
 
 object TimeUtils {
 
-    private val fileStamp = DateTimeFormatter.ofPattern("yyyy-MM-dd_HHmm", Locale.KOREA)
-    private val listStamp = DateTimeFormatter.ofPattern("yyyy.MM.dd (E) HH:mm", Locale.KOREA)
+    /**
+     * 파일명용. **반드시 [Locale.ROOT]** 이어야 한다. 기본 로캘을 쓰면 아랍어 등
+     * 일부 로캘에서 숫자가 ASCII 가 아닌 글자로 찍혀 파일명이 깨진다.
+     */
+    private val fileStamp = DateTimeFormatter.ofPattern("yyyy-MM-dd_HHmm", Locale.ROOT)
 
-    val koreanDayNames = listOf("월", "화", "수", "목", "금", "토", "일")
+    /** 화면 표시용이므로 기기 로캘을 따른다. */
+    private val listStamp = DateTimeFormatter.ofPattern("yyyy.MM.dd (E) HH:mm")
 
-    fun dayName(dayOfWeek: Int): String =
-        koreanDayNames.getOrElse(dayOfWeek - 1) { "?" }
+    /**
+     * 요일 한 글자. 문자열 리소스를 두지 않고 [DayOfWeek] 의 로캘 데이터를 쓴다.
+     * 번역을 직접 관리할 필요가 없고, 새 언어를 추가해도 저절로 맞는다.
+     */
+    fun dayName(dayOfWeek: Int, locale: Locale = Locale.getDefault()): String =
+        displayName(dayOfWeek, TextStyle.SHORT, locale)
+
+    /** 전체 이름("월요일" / "Monday"). 한국어에서 짧은 이름 + "요일" 을 붙이던 것을 대체한다. */
+    fun dayNameFull(dayOfWeek: Int, locale: Locale = Locale.getDefault()): String =
+        displayName(dayOfWeek, TextStyle.FULL, locale)
+
+    private fun displayName(dayOfWeek: Int, style: TextStyle, locale: Locale): String =
+        runCatching { DayOfWeek.of(dayOfWeek).getDisplayName(style, locale) }.getOrDefault("?")
 
     fun minuteToText(minuteOfDay: Int): String =
         "%02d:%02d".format(minuteOfDay / 60, minuteOfDay % 60)

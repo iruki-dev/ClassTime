@@ -1,13 +1,17 @@
 package dev.iruki.classtime.ui.term
 
-import android.app.Application
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import dev.iruki.classtime.R
 import dev.iruki.classtime.data.ClassTimeRepository
 import dev.iruki.classtime.data.ScheduleException
 import dev.iruki.classtime.data.Term
 import dev.iruki.classtime.schedule.ScheduleManager
 import java.time.LocalDate
+import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -18,9 +22,11 @@ import kotlinx.coroutines.launch
 /** 드롭다운용 과목 요약. */
 data class CourseOption(val groupId: String, val subject: String)
 
-class TermViewModel(
-    private val app: Application,
+@HiltViewModel
+class TermViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val repo: ClassTimeRepository,
+    private val scheduleManager: ScheduleManager,
 ) : ViewModel() {
 
     val term: StateFlow<Term?> = repo.term
@@ -41,18 +47,24 @@ class TermViewModel(
 
     fun setTerm(start: LocalDate?, end: LocalDate?) = viewModelScope.launch(Dispatchers.IO) {
         repo.upsertTerm(Term.of(start, end))
-        ScheduleManager.rescheduleAll(app)
+        scheduleManager.rescheduleAll()
     }
 
     fun addHoliday(date: LocalDate) = viewModelScope.launch(Dispatchers.IO) {
-        repo.upsertException(ScheduleException.cancel(date, courseGroupId = null, subject = "공휴일"))
-        ScheduleManager.rescheduleAll(app)
+        repo.upsertException(
+            ScheduleException.cancel(
+                date,
+                courseGroupId = null,
+                subject = context.getString(R.string.exception_holiday),
+            )
+        )
+        scheduleManager.rescheduleAll()
     }
 
     fun addCancel(date: LocalDate, groupId: String, subject: String) =
         viewModelScope.launch(Dispatchers.IO) {
             repo.upsertException(ScheduleException.cancel(date, groupId, subject))
-            ScheduleManager.rescheduleAll(app)
+            scheduleManager.rescheduleAll()
         }
 
     fun addMakeup(
@@ -73,14 +85,14 @@ class TermViewModel(
                 autoRecord = autoRecord,
             )
         )
-        ScheduleManager.rescheduleAll(app)
+        scheduleManager.rescheduleAll()
     }
 
     fun remove(exception: ScheduleException) = viewModelScope.launch(Dispatchers.IO) {
         exception.takeIf { it.id != 0L }?.let {
-            ScheduleManager.cancelMakeup(app, it.id)
+            scheduleManager.cancelMakeup(it.id)
             repo.deleteException(it)
-            ScheduleManager.rescheduleAll(app)
+            scheduleManager.rescheduleAll()
         }
     }
 }

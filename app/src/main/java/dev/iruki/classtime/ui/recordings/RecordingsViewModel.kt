@@ -1,15 +1,19 @@
 package dev.iruki.classtime.ui.recordings
 
-import android.app.Application
+import android.content.Context
 import android.content.Intent
 import android.media.MediaPlayer
 import android.net.Uri
-import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import dev.iruki.classtime.R
 import dev.iruki.classtime.audio.RecordingStorage
 import dev.iruki.classtime.data.ClassTimeRepository
 import dev.iruki.classtime.data.Recording
+import dev.iruki.classtime.util.AppLog
+import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -28,12 +32,12 @@ data class PlaybackState(
     val durationMs: Int = 0,
 )
 
-class RecordingsViewModel(
-    private val app: Application,
+@HiltViewModel
+class RecordingsViewModel @Inject constructor(
+    @ApplicationContext private val app: Context,
     private val repo: ClassTimeRepository,
+    private val storage: RecordingStorage,
 ) : ViewModel() {
-
-    private val storage = RecordingStorage(app)
     private var player: MediaPlayer? = null
 
     /** 과목별로 묶은 목록. 최신 녹음이 있는 과목이 위로. */
@@ -114,7 +118,7 @@ class RecordingsViewModel(
             )
             true
         } catch (e: Exception) {
-            Log.e(TAG, "재생 실패: ${recording.fileName}", e)
+            AppLog.e(TAG, "재생 실패: recordingId=${recording.id}", e)
             _playback.value = PlaybackState()
             false
         }
@@ -166,7 +170,7 @@ class RecordingsViewModel(
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         app.startActivity(
-            Intent.createChooser(intent, "녹음 파일 보내기")
+            Intent.createChooser(intent, app.getString(R.string.recordings_share_chooser))
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         )
     }
@@ -182,7 +186,7 @@ class RecordingsViewModel(
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         app.startActivity(
-            Intent.createChooser(intent, "녹음 파일 보내기")
+            Intent.createChooser(intent, app.getString(R.string.recordings_share_chooser))
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         )
     }

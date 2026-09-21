@@ -9,9 +9,9 @@ import android.content.pm.ServiceInfo
 import android.net.Uri
 import android.os.Build
 import android.os.IBinder
-import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import dagger.hilt.android.AndroidEntryPoint
 import dev.iruki.classtime.ClassTimeApp
 import dev.iruki.classtime.MainActivity
 import dev.iruki.classtime.R
@@ -21,11 +21,14 @@ import dev.iruki.classtime.data.ClassTimeRepository
 import dev.iruki.classtime.data.Recording
 import dev.iruki.classtime.data.RecordingStatus
 import dev.iruki.classtime.data.StandbyState
+import dev.iruki.classtime.di.ApplicationScope
+import dev.iruki.classtime.util.AppLog
 import dev.iruki.classtime.util.AppPermissions
 import dev.iruki.classtime.util.AppSettings
 import dev.iruki.classtime.util.TimeUtils
 import java.io.File
 import java.time.LocalDate
+import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -52,25 +55,43 @@ import kotlinx.coroutines.withContext
  * 그래서 [startForeground] 는 서비스 인스턴스당 **정확히 한 번만** 호출한다.
  * 다시 호출하면 그 시점의 앱 상태로 권한이 재평가되어 애써 잡은 권한을 잃는다.
  */
+@AndroidEntryPoint
 class RecordingService : Service() {
 
+    @Inject lateinit var repo: ClassTimeRepository
+    @Inject lateinit var storage: RecordingStorage
+    @Inject lateinit var settings: AppSettings
+
+    /**
+     * 서비스가 죽어도 끝나야 하는 마무리 작업용. [serviceScope] 에서 돌리면
+     * stopSelf() 순간 취소되어 파일이 재생 불가 상태로 남는다.
+     */
+    @Inject @ApplicationScope lateinit var appScope: CoroutineScope
+
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private lateinit var repo: ClassTimeRepository
-    private lateinit var storage: RecordingStorage
-    private lateinit var settings: AppSettings
     private val recorder by lazy { AudioRecorder(applicationContext) }
 
     private val stateLock = Mutex()
-    private var session: ActiveSession? = null
+
+    // 아래 네 값은 스레드를 넘나든다: onStartCommand / settle / onDestroy 는 메인 스레드에서,
+    // startSession / finalizeSession 은 serviceScope(IO) 에서 돈다. @Volatile 이 없으면
+    // 한쪽의 쓰기가 다른 쪽에 영원히 보이지 않을 수 있다 (예: 녹음이 시작됐는데도 알림이
+    // 계속 '대기 중'으로 남거나, 이미 끝난 세션을 살아 있다고 보고 새 녹음을 건너뛴다).
+    //
+    // 복합 연산의 원자성은 별도로 보장된다:
+    //   - [session] 의 검사-후-대입은 전부 [stateLock] 안에서만 일어난다.
+    //   - 나머지 셋은 메인 스레드에서만 쓰이므로 서로에 대해 이미 원자적이다.
+
+    @Volatile private var session: ActiveSession? = null
 
     /** startForeground() 를 이미 호출했는지. 두 번 부르면 마이크 권한이 재평가된다. */
-    private var isForeground = false
+    @Volatile private var isForeground = false
 
     /** 포그라운드 전환이 앱이 화면에 있을 때 이뤄졌는지 = 마이크가 열려 있는지. */
-    private var micReady = false
+    @Volatile private var micReady = false
 
     /** 녹음이 끝나도 서비스를 살려 둘지. */
-    private var standbyArmed = false
+    @Volatile private var standbyArmed = false
 
     private data class ActiveSession(
         val rowId: Long,
@@ -81,13 +102,6 @@ class RecordingService : Service() {
         val auto: Boolean,
     )
 
-    override fun onCreate() {
-        super.onCreate()
-        repo = ClassTimeRepository.get(this)
-        storage = RecordingStorage(applicationContext)
-        settings = AppSettings(this)
-    }
-
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -95,7 +109,7 @@ class RecordingService : Service() {
             ACTION_START_STANDBY -> {
                 standbyArmed = true
                 enterForeground(
-                    text = STANDBY_TEXT,
+                    text = getString(R.string.notif_standby_text),
                     fromForeground = intent.getBooleanExtra(EXTRA_FROM_FOREGROUND, false),
                 )
             }
@@ -108,7 +122,10 @@ class RecordingService : Service() {
 
             ACTION_START_AUTO, ACTION_START_MAKEUP, ACTION_START_MANUAL -> {
                 // 수동 시작은 사용자가 앱에서 누른 것이므로 앱이 화면에 있다.
-                enterForeground("녹음 준비 중…", fromForeground = action == ACTION_START_MANUAL)
+                enterForeground(
+                    getString(R.string.notif_preparing),
+                    fromForeground = action == ACTION_START_MANUAL,
+                )
                 val spec = when (action) {
                     ACTION_START_AUTO -> Spec.Auto(intent.getLongExtra(EXTRA_COURSE_ID, -1L))
                     ACTION_START_MAKEUP -> Spec.Makeup(intent.getLongExtra(EXTRA_EXCEPTION_ID, -1L))
@@ -132,7 +149,7 @@ class RecordingService : Service() {
      */
     private fun enterForeground(text: String, fromForeground: Boolean) {
         if (isForeground && !micReady && fromForeground && session == null) {
-            Log.i(TAG, "마이크 없이 떠 있던 대기 상태 - 지금 앱이 화면에 있으므로 다시 전환합니다")
+            AppLog.i(TAG, "마이크 없이 떠 있던 대기 상태 - 지금 앱이 화면에 있으므로 다시 전환합니다")
             runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
             isForeground = false
         }
@@ -154,9 +171,9 @@ class RecordingService : Service() {
             isForeground = true
             micReady = fromForeground
             publishStandby()
-            Log.i(TAG, "포그라운드 전환 (마이크 사용 가능=$micReady)")
+            AppLog.i(TAG, "포그라운드 전환 (마이크 사용 가능=$micReady)")
         } catch (e: Exception) {
-            Log.e(TAG, "포그라운드 전환 실패", e)
+            AppLog.e(TAG, "포그라운드 전환 실패", e)
             finalizeAndSettle("foreground-failed")
         }
     }
@@ -187,12 +204,19 @@ class RecordingService : Service() {
     private suspend fun resolve(spec: Spec): Resolved = when (spec) {
         is Spec.Auto -> {
             val c = repo.course(spec.courseId)
-            Resolved(c?.subject ?: "기타", c?.professor.orEmpty(), c?.id, auto = true, c?.endMinute)
+            Resolved(
+                subject = c?.subject ?: getString(R.string.subject_unknown),
+                professor = c?.professor.orEmpty(),
+                courseId = c?.id,
+                auto = true,
+                plannedEndMinute = c?.endMinute,
+            )
         }
         is Spec.Makeup -> {
             val e = repo.exception(spec.exceptionId)
             Resolved(
-                subject = e?.subject?.ifBlank { "보강" } ?: "보강",
+                subject = e?.subject?.ifBlank { getString(R.string.subject_makeup) }
+                    ?: getString(R.string.subject_makeup),
                 professor = e?.professor.orEmpty(),
                 courseId = null,
                 auto = true,
@@ -202,7 +226,9 @@ class RecordingService : Service() {
         is Spec.Manual -> {
             val s = repo.currentSession()
             Resolved(
-                subject = spec.override?.takeIf { it.isNotBlank() } ?: s?.subject ?: "기타",
+                subject = spec.override?.takeIf { it.isNotBlank() }
+                    ?: s?.subject
+                    ?: getString(R.string.subject_unknown),
                 professor = s?.professor.orEmpty(),
                 courseId = s?.courseId,
                 auto = false,
@@ -213,17 +239,18 @@ class RecordingService : Service() {
 
     private suspend fun startSession(spec: Spec) = stateLock.withLock {
         if (session != null) {
-            Log.w(TAG, "이미 녹음 중이므로 새 요청 무시: $spec")
+            AppLog.w(TAG, "이미 녹음 중이므로 새 요청 무시: ${spec.javaClass.simpleName}")
             return@withLock
         }
         if (!AppPermissions.micGranted(this)) {
-            Log.e(TAG, "마이크 권한 없음 - 녹음 불가")
+            AppLog.e(TAG, "마이크 권한 없음 - 녹음 불가")
             settle()
             return@withLock
         }
         // 이 서비스가 녹음 중이 아니라면 DB 의 'ongoing' 행은 죽은 잔여물이다.
         // 먼저 치워두지 않으면 다음 수업 자동 녹음이 '이미 녹음 중'으로 오인돼 통째로 건너뛴다.
         runCatching { repo.healStaleRecordings() }
+            .onFailure { AppLog.e(TAG, "미완료 녹음 정리 실패 - 이번 녹음이 건너뛰어질 수 있습니다", it) }
 
         val r = resolve(spec)
         val startedAt = System.currentTimeMillis()
@@ -233,8 +260,9 @@ class RecordingService : Service() {
         try {
             recorder.start(target.uri)
         } catch (e: Exception) {
-            Log.e(TAG, "녹음 시작 실패", e)
+            AppLog.e(TAG, "녹음 시작 실패", e)
             runCatching { storage.delete(target.uri) }
+                .onFailure { AppLog.w(TAG, "시작 실패한 녹음의 빈 파일을 지우지 못했습니다", it) }
             settle()
             return@withLock
         }
@@ -265,12 +293,12 @@ class RecordingService : Service() {
             RecordingStatus(active = true, subject = r.subject, auto = r.auto, startedAt = startedAt)
         )
         armWatchdog(startedAt, r.plannedEndMinute)
-        updateNotification("‘${r.subject}’ 녹음 중")
+        updateNotification(getString(R.string.notif_recording_subject, r.subject))
 
         if (!micReady) {
-            Log.e(TAG, "마이크 권한 없이 녹음 시작 - 무음이 될 가능성이 큽니다 (대기 모드 미작동)")
+            AppLog.e(TAG, "마이크 권한 없이 녹음 시작 - 무음이 될 가능성이 큽니다 (대기 모드 미작동)")
         }
-        Log.i(TAG, "녹음 시작: ${r.subject} (auto=${r.auto}, micReady=$micReady)")
+        AppLog.i(TAG, "녹음 시작: ${r.subject} (auto=${r.auto}, micReady=$micReady)")
     }
 
     /** 워치독 알람: 계획된 종료 시각 + 유예, 그리고 절대 상한 중 이른 쪽. */
@@ -282,7 +310,7 @@ class RecordingService : Service() {
             ?: capAt
         val stopAt = minOf(plannedAt, capAt)
         RecordingWatchdogReceiver.arm(this, stopAt)
-        Log.i(TAG, "워치독 예약: ${(stopAt - System.currentTimeMillis()) / 1000}s 후")
+        AppLog.i(TAG, "워치독 예약: ${(stopAt - System.currentTimeMillis()) / 1000}s 후")
     }
 
     // --- 마무리 ---
@@ -290,7 +318,7 @@ class RecordingService : Service() {
     /** 어디서 몇 번 불려도 안전. 마무리는 앱 스코프에서 돌아 서비스가 죽어도 완료된다. */
     private fun finalizeAndSettle(reason: String) {
         RecordingWatchdogReceiver.disarm(this)
-        ClassTimeApp.appScope(this).launch {
+        appScope.launch {
             withContext(NonCancellable) { finalizeSession(reason) }
             withContext(Dispatchers.Main) { settle() }
         }
@@ -299,7 +327,7 @@ class RecordingService : Service() {
     /** 녹음이 끝난 뒤: 대기 모드면 살아남고, 아니면 서비스를 내린다. */
     private fun settle() {
         if (standbyArmed && isForeground) {
-            updateNotification(STANDBY_TEXT)
+            updateNotification(getString(R.string.notif_standby_text))
             publishStandby()
         } else {
             leaveForegroundAndStop()
@@ -343,10 +371,10 @@ class RecordingService : Service() {
         repo.updateStatus(RecordingStatus.Idle)
 
         if (result?.cleanStop == false) {
-            Log.w(TAG, "MediaRecorder 가 정상 종료되지 않았습니다 - 파일이 손상됐을 수 있습니다")
+            AppLog.w(TAG, "MediaRecorder 가 정상 종료되지 않았습니다 - 파일이 손상됐을 수 있습니다")
         }
         if (peak == 0 && duration > SILENT_REPORT_MIN_MS) warnSilence(s.subject)
-        Log.i(
+        AppLog.i(
             TAG,
             "녹음 마무리($reason): ${s.subject} ${TimeUtils.formatDuration(duration)} peak=$peak",
         )
@@ -392,16 +420,13 @@ class RecordingService : Service() {
             this, 2, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        val body = if (!micReady) {
-            "‘$subject’ 녹음에 소리가 들어오지 않습니다. 녹음이 시작될 때 앱이 화면에 없어서 " +
-                "안드로이드가 마이크를 막았습니다. 앱을 열면 지금부터라도 소리가 들어오고, " +
-                "다음 수업부터는 정상적으로 녹음됩니다."
-        } else {
-            "‘$subject’ 녹음에 소리가 들어오지 않습니다. 다른 앱이 마이크를 쓰고 있거나 " +
-                "기기 설정에서 마이크가 차단된 상태일 수 있습니다."
-        }
+        val body = getString(
+            if (!micReady) R.string.notif_silence_body_background
+            else R.string.notif_silence_body_blocked,
+            subject,
+        )
         val notification = NotificationCompat.Builder(this, ClassTimeApp.CHANNEL_WARNING)
-            .setContentTitle("무음이 녹음되고 있습니다")
+            .setContentTitle(getString(R.string.notif_silence_title))
             .setContentText(body)
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setSmallIcon(R.drawable.ic_launcher_foreground)
@@ -417,9 +442,9 @@ class RecordingService : Service() {
 
     override fun onDestroy() {
         if (session != null) {
-            Log.w(TAG, "서비스 파괴 - 앱 스코프에서 녹음 마무리")
+            AppLog.w(TAG, "서비스 파괴 - 앱 스코프에서 녹음 마무리")
             RecordingWatchdogReceiver.disarm(this)
-            ClassTimeApp.appScope(this).launch {
+            appScope.launch {
                 withContext(NonCancellable) { finalizeSession("service-destroyed") }
             }
         }
@@ -434,8 +459,6 @@ class RecordingService : Service() {
         private const val TAG = "RecordingService"
         private const val NOTIF_ID = 42
         private const val WARN_NOTIF_ID = 43
-
-        private const val STANDBY_TEXT = "대기 중 · 수업 시간이 되면 자동으로 녹음합니다"
 
         /** 어떤 경우에도 이 길이를 넘겨 녹음하지 않는다 (4시간). */
         private const val MAX_RECORDING_MS = 4L * 60 * 60 * 1000
@@ -459,7 +482,7 @@ class RecordingService : Service() {
 
         private fun send(context: Context, intent: Intent) =
             runCatching { ContextCompat.startForegroundService(context, intent) }
-                .onFailure { Log.e(TAG, "서비스 시작 실패: ${intent.action}", it) }
+                .onFailure { AppLog.e(TAG, "서비스 시작 실패: ${intent.action}", it) }
 
         /**
          * 대기 모드를 켠다. **반드시 앱이 화면에 보이는 상태에서** 호출해야 마이크 권한을

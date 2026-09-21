@@ -1,13 +1,14 @@
 package dev.iruki.classtime.data
 
-import android.content.Context
 import android.net.Uri
 import dev.iruki.classtime.audio.RecordingStorage
+import dev.iruki.classtime.di.ApplicationScope
+import dev.iruki.classtime.util.AppLog
 import dev.iruki.classtime.util.TimeUtils
 import java.time.LocalDate
+import javax.inject.Inject
+import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,17 +20,21 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /**
- * 앱 전역에서 공유하는 데이터 접근 지점. [ClassTimeApp] 이 한 번만 만든다.
+ * 앱 전역에서 공유하는 데이터 접근 지점. Hilt 가 프로세스당 하나만 만든다.
+ *
+ * Context 대신 DAO 를 직접 받는다. 그래야 안드로이드 프레임워크 없이도 생성할 수 있어
+ * 테스트에서 가짜 DAO 를 끼워 넣기 쉽다.
  */
-class ClassTimeRepository private constructor(context: Context) {
+@Singleton
+class ClassTimeRepository @Inject constructor(
+    private val courseDao: CourseDao,
+    private val recordingDao: RecordingDao,
+    private val termDao: TermDao,
+    private val exceptionDao: ScheduleExceptionDao,
+    private val storage: RecordingStorage,
+    @ApplicationScope private val scope: CoroutineScope,
+) {
 
-    private val db = AppDatabase.get(context)
-    private val courseDao = db.courseDao()
-    private val recordingDao = db.recordingDao()
-    private val termDao = db.termDao()
-    private val exceptionDao = db.scheduleExceptionDao()
-    private val storage = RecordingStorage(context.applicationContext)
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val healMutex = Mutex()
 
     val courses: Flow<List<Course>> = courseDao.observeAll()
@@ -74,7 +79,10 @@ class ClassTimeRepository private constructor(context: Context) {
         _status.value = status
         // 녹음이 끝났다는 신호가 오면, 서비스가 중간에 죽어서 '녹음 중'으로 남은 행이 없는지
         // 확인하고 마무리한다. (홈 탭은 종료로 보이는데 목록은 '녹음 중'이던 문제의 해결책)
-        if (!status.active) scope.launch { runCatching { healStaleRecordings() } }
+        if (!status.active) scope.launch {
+            runCatching { healStaleRecordings() }
+                .onFailure { AppLog.e(TAG, "녹음 종료 후 정리 실패", it) }
+        }
     }
 
     // --- Course ---
@@ -135,13 +143,8 @@ class ClassTimeRepository private constructor(context: Context) {
     suspend fun forceFinalize(recording: Recording): Recording =
         finalizeRecordingRow(recordingDao, storage, recording)
 
-    companion object {
-        @Volatile private var INSTANCE: ClassTimeRepository? = null
-
-        fun get(context: Context): ClassTimeRepository =
-            INSTANCE ?: synchronized(this) {
-                INSTANCE ?: ClassTimeRepository(context.applicationContext).also { INSTANCE = it }
-            }
+    private companion object {
+        const val TAG = "ClassTimeRepository"
     }
 }
 

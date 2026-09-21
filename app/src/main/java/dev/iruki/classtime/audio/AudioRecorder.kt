@@ -8,7 +8,7 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.os.ParcelFileDescriptor
 import android.os.SystemClock
-import android.util.Log
+import dev.iruki.classtime.util.AppLog
 
 /**
  * 한 번의 녹음 결과.
@@ -32,9 +32,12 @@ data class RecordingResult(
  */
 class AudioRecorder(private val context: Context) {
 
-    private var recorder: MediaRecorder? = null
-    private var pfd: ParcelFileDescriptor? = null
-    private var startedElapsed = 0L
+    // 진폭 폴링 스레드가 [recorder] 와 [startedElapsed] 를 읽는 동안 서비스 코루틴이
+    // start()/stop() 에서 그 둘을 쓴다. @Volatile 이 없으면 폴링 스레드가 이미 해제된
+    // MediaRecorder 를 계속 붙잡거나(IllegalStateException), 멈춘 녹음을 계속 표본화한다.
+    @Volatile private var recorder: MediaRecorder? = null
+    @Volatile private var pfd: ParcelFileDescriptor? = null
+    @Volatile private var startedElapsed = 0L
 
     private var pollThread: HandlerThread? = null
     private var pollHandler: Handler? = null
@@ -82,9 +85,11 @@ class AudioRecorder(private val context: Context) {
             throw e
         }
 
-        recorder = rec
+        // 폴링 스레드는 recorder != null 을 보는 순간부터 startedElapsed 를 쓴다.
+        // 그러므로 recorder 를 마지막에 대입해야 한 틱도 엉뚱한 기준시각으로 돌지 않는다.
         peak = 0
         startedElapsed = SystemClock.elapsedRealtime()
+        recorder = rec
         startAmplitudePolling()
     }
 
@@ -98,7 +103,7 @@ class AudioRecorder(private val context: Context) {
             rec.stop()
         } catch (e: RuntimeException) {
             // 녹음 데이터가 거의 없으면 stop() 이 던진다. 이 경우 파일에 moov 가 없어 재생 불가.
-            Log.w(TAG, "MediaRecorder.stop() 실패 - 파일이 불완전할 수 있습니다", e)
+            AppLog.w(TAG, "MediaRecorder.stop() 실패 - 파일이 불완전할 수 있습니다", e)
             clean = false
         } finally {
             runCatching { rec.reset() }
@@ -131,7 +136,7 @@ class AudioRecorder(private val context: Context) {
                 val elapsed = SystemClock.elapsedRealtime() - startedElapsed
                 if (!silenceReported && peak == 0 && elapsed >= SILENCE_VERDICT_MS) {
                     silenceReported = true
-                    Log.e(TAG, "무음 감지: ${elapsed}ms 동안 진폭이 0 - 마이크가 차단된 상태로 보입니다")
+                    AppLog.e(TAG, "무음 감지: ${elapsed}ms 동안 진폭이 0 - 마이크가 차단된 상태로 보입니다")
                     runCatching { onSilenceSuspected?.invoke() }
                 }
                 handler.postDelayed(this, POLL_INTERVAL_MS)

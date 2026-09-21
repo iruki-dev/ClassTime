@@ -1,11 +1,192 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">ClassTime</string>
+
+    <!-- ===== 공통 ===== -->
+    <string name="action_confirm">확인</string>
+    <string name="action_cancel">취소</string>
+    <string name="subject_unknown">기타</string>
+    <string name="subject_makeup">보강</string>
+
+    <!-- ===== 내비게이션 ===== -->
+    <string name="nav_home">녹음</string>
+    <string name="nav_timetable">시간표</string>
+    <string name="nav_recordings">녹음 목록</string>
+
+    <!-- ===== 알림 채널 ===== -->
     <string name="channel_recording_name">강의 녹음</string>
     <string name="channel_recording_desc">수업 자동/수동 녹음이 진행 중일 때 표시됩니다.</string>
-    <string name="notif_recording_title">녹음 중</string>
-    <string name="notif_stop">정지</string>
-    <string name="notif_standby_title">ClassTime 대기 중</string>
     <string name="channel_warning_name">녹음 경고</string>
     <string name="channel_warning_desc">무음이 녹음되는 등 확인이 필요한 상황을 알립니다.</string>
+
+    <!-- ===== 녹음 서비스 알림 ===== -->
+    <string name="notif_recording_title">녹음 중</string>
+    <string name="notif_standby_title">ClassTime 대기 중</string>
+    <string name="notif_stop">정지</string>
+    <string name="notif_preparing">녹음 준비 중…</string>
+    <string name="notif_recording_subject">‘%1$s’ 녹음 중</string>
+    <string name="notif_standby_text">대기 중 · 수업 시간이 되면 자동으로 녹음합니다</string>
+
+    <!-- 무음 경고 -->
+    <string name="notif_silence_title">무음이 녹음되고 있습니다</string>
+    <string name="notif_silence_body_background">‘%1$s’ 녹음에 소리가 들어오지 않습니다. 녹음이 시작될 때 앱이 화면에 없어서 안드로이드가 마이크를 막았습니다. 앱을 열면 지금부터라도 소리가 들어오고, 다음 수업부터는 정상적으로 녹음됩니다.</string>
+    <string name="notif_silence_body_blocked">‘%1$s’ 녹음에 소리가 들어오지 않습니다. 다른 앱이 마이크를 쓰고 있거나 기기 설정에서 마이크가 차단된 상태일 수 있습니다.</string>
+
+    <!-- 재부팅 안내 -->
+    <string name="notif_reboot_title">재부팅 후 확인이 필요합니다</string>
+    <string name="notif_reboot_body">자동 녹음에 소리가 들어가려면 ClassTime 을 한 번 열어 주세요. 재부팅 직후에는 앱이 마이크를 미리 확보할 수 없습니다.</string>
+
+    <!-- ===== 설정 점검 (SetupIssue) ===== -->
+    <string name="setup_action_grant">권한 허용</string>
+    <string name="setup_action_open_settings">설정 열기</string>
+
+    <string name="setup_mic_title">마이크 권한이 필요합니다</string>
+    <string name="setup_mic_detail">권한이 없으면 녹음을 시작할 수 없습니다.</string>
+
+    <string name="setup_overlay_title">‘다른 앱 위에 표시’ (선택)</string>
+    <string name="setup_overlay_detail">일부 기기에서는 이 권한이 백그라운드 마이크 제한의 예외로 인정됩니다. 자동 녹음 소리 문제는 주로 아래 ‘대기 모드’로 해결되지만, 켜 두면 안전장치가 하나 더 생깁니다.</string>
+
+    <string name="setup_notifications_title">알림 권한이 꺼져 있습니다</string>
+    <string name="setup_notifications_detail">녹음 중 알림은 포그라운드 서비스 유지에 필요합니다. 무음 녹음 경고도 이 알림으로 전달됩니다.</string>
+
+    <string name="setup_exact_alarm_title">‘알람 및 리마인더’가 꺼져 있습니다</string>
+    <string name="setup_exact_alarm_detail">꺼져 있으면 시스템이 알람을 몇 분씩 미루기 때문에 수업 앞부분이 잘립니다.</string>
+
+    <string name="setup_battery_title">배터리 최적화 대상입니다</string>
+    <string name="setup_battery_detail">제조사 절전 기능이 앱을 종료하면 자동 녹음이 통째로 실패할 수 있습니다.</string>
+    <string name="setup_battery_action">제한 없음으로 변경</string>
+
+    <!-- ===== 홈 화면 ===== -->
+    <string name="home_empty_timetable">시간표가 비어 있습니다. 수업을 등록하면 자동 녹음과 자동 라벨링이 켜집니다.</string>
+    <string name="home_empty_timetable_action">시간표 만들기</string>
+    <string name="home_term_before">개강 전입니다. 개강일부터 자동 녹음이 시작됩니다.</string>
+    <string name="home_term_after">종강일이 지났습니다. 자동 녹음이 꺼져 있습니다. (수동 녹음은 계속 가능)</string>
+
+    <string name="home_status_auto_recording">‘%1$s’ 자동 녹음 중 · %2$s</string>
+    <string name="home_status_recording">‘%1$s’ 녹음 중 · %2$s</string>
+    <string name="home_status_in_class">지금은 ‘%1$s’ 시간입니다. 누르면 이 이름으로 저장됩니다.</string>
+    <string name="home_status_off_schedule">시간표에 없는 시간입니다. 누르면 이름을 물어봅니다.</string>
+
+    <string name="home_today_header">오늘 (%1$s)</string>
+    <string name="home_no_class_today">오늘은 열리는 수업이 없습니다.</string>
+    <string name="home_not_in_term">오늘은 학기 중이 아닙니다.</string>
+
+    <string name="home_storage_title">저장 위치</string>
+    <string name="home_storage_path">내장 저장소 / Music / %1$s / &lt;과목명&gt;</string>
+    <string name="home_storage_hint">USB 케이블로 PC 에 연결하면 이 폴더가 그대로 보입니다. 과목 폴더째 복사하세요.</string>
+
+    <string name="home_ask_label_title">무슨 수업인가요?</string>
+    <string name="home_ask_label_body">지금은 시간표에 없는 시간이라 이름을 붙일 수 없습니다. 비워두면 ‘%1$s’ 폴더에 저장됩니다.</string>
+    <string name="home_ask_label_field">과목명</string>
+    <string name="home_ask_label_start">녹음 시작</string>
+
+    <string name="home_cd_stop_recording">녹음 정지</string>
+    <string name="home_cd_start_recording">녹음 시작</string>
+
+    <string name="home_session_makeup_suffix">  (%1$s)</string>
+    <string name="home_session_in_progress">진행 중</string>
+    <string name="home_session_auto_off">자동 꺼짐</string>
+    <string name="home_session_done">종료</string>
+    <string name="home_session_scheduled">예약됨</string>
+
+    <string name="home_standby_on">대기 모드 켜짐 — 자동 녹음 준비 완료</string>
+    <string name="home_standby_preparing">대기 모드 준비 중</string>
+    <string name="home_standby_off">대기 모드 꺼짐 — 자동 녹음이 무음이 됩니다</string>
+    <string name="home_standby_on_detail">수업 시간이 되면 앱이 닫혀 있어도 소리까지 정상적으로 녹음됩니다.</string>
+    <string name="home_standby_preparing_detail">이 화면을 잠깐 열어 두면 준비가 끝납니다.</string>
+    <string name="home_standby_off_detail">안드로이드는 녹음이 시작되는 순간 앱이 화면에 없으면 마이크를 막습니다. 대기 모드는 앱이 열려 있는 동안 미리 마이크를 확보해 둡니다.</string>
+
+    <!-- ===== 공통 액션 ===== -->
+    <string name="action_add">추가</string>
+    <string name="action_delete">삭제</string>
+    <string name="action_back">뒤로</string>
+    <string name="action_pick_date">날짜 선택</string>
+    <string name="value_unset">미설정</string>
+
+    <!-- ===== 학기 · 휴강 · 보강 화면 ===== -->
+    <string name="term_title">학기 · 휴강 · 보강</string>
+    <string name="term_period_title">학기 기간</string>
+    <string name="term_period_hint">개강일 전과 종강일 후에는 자동 녹음이 잡히지 않습니다. 비워두면 항상 켜집니다.</string>
+    <string name="term_start_label">개강  %1$s</string>
+    <string name="term_end_label">종강  %1$s</string>
+    <string name="term_clear">학기 기간 해제</string>
+
+    <string name="term_exceptions_title">다가오는 휴강 · 보강</string>
+    <string name="term_add_cancel">휴강 추가</string>
+    <string name="term_add_makeup">보강 추가</string>
+    <string name="term_no_exceptions">등록된 예외가 없습니다.</string>
+
+    <string name="term_type_cancel">휴강</string>
+    <string name="term_type_makeup">보강</string>
+    <string name="term_scope_whole_day">전체(공휴일)</string>
+    <string name="term_scope_course">과목</string>
+    <string name="term_scope_specific_course">특정 과목</string>
+    <string name="term_auto_suffix"> · 자동</string>
+    <string name="term_manual_suffix"> · 수동</string>
+
+    <string name="term_subject_field">과목명</string>
+    <string name="term_time_start">시작 %1$s</string>
+    <string name="term_time_end">종료 %1$s</string>
+    <string name="term_auto_record">자동 녹음</string>
+    <string name="term_pick_start">시작 시각</string>
+    <string name="term_pick_end">종료 시각</string>
+
+    <string name="term_course_link_label">연결할 과목</string>
+    <string name="term_course_manual_entry">직접 입력</string>
+
+    <!-- ===== 시간표 화면 ===== -->
+    <string name="timetable_title">시간표</string>
+    <string name="timetable_cd_term">학기 · 휴강 · 보강</string>
+    <string name="timetable_cd_add_course">수업 추가</string>
+    <string name="timetable_empty_title">아직 등록된 수업이 없습니다</string>
+    <string name="timetable_empty_hint">오른쪽 아래 + 버튼으로 수업을 추가하면 그 시간에 맞춰 자동으로 녹음이 시작됩니다.</string>
+    <string name="timetable_auto_off">자동 꺼짐</string>
+
+    <!-- ===== 수업 편집 화면 ===== -->
+    <string name="course_edit_title">수업 수정</string>
+    <string name="course_add_title">수업 추가</string>
+    <string name="course_subject_label">과목명 *</string>
+    <string name="course_subject_support">녹음 파일 이름과 폴더 이름으로 사용됩니다</string>
+    <string name="course_professor_label">교수님</string>
+    <string name="course_room_label">강의실</string>
+    <string name="course_slots_title">수업 시간</string>
+    <string name="course_slots_hint">요일마다 시간이 달라도 되고, 같은 요일에 두 번 열려도 됩니다. 필요한 만큼 추가하세요.</string>
+    <string name="course_add_slot">시간 추가</string>
+    <string name="course_auto_record">자동 녹음</string>
+    <string name="course_auto_record_hint">이 시간이 되면 앱이 알아서 녹음을 시작하고 끝나면 멈춥니다.</string>
+    <string name="course_color">색상</string>
+    <string name="course_save">저장</string>
+    <string name="course_save_with_slots">저장 (%1$d교시)</string>
+    <string name="course_pick_start">시작 시각</string>
+    <string name="course_pick_end">종료 시각</string>
+    <string name="course_delete_title">이 과목을 삭제할까요?</string>
+    <string name="course_delete_body">모든 교시에서 지워지고 예약된 자동 녹음도 취소됩니다. 이미 녹음된 파일은 그대로 남습니다.</string>
+    <string name="course_cd_delete_slot">이 시간 삭제</string>
+    <string name="course_end_before_start">종료 시각이 시작보다 빠릅니다.</string>
+
+    <!-- ===== 녹음 목록 화면 ===== -->
+    <string name="recordings_title">녹음 목록</string>
+    <string name="recordings_empty">아직 녹음이 없습니다.\n수업 시간이 되면 자동으로, 또는 녹음 탭에서 직접 시작할 수 있습니다.</string>
+    <string name="recordings_rename_title">파일 이름 바꾸기</string>
+    <string name="recordings_rename_field">파일 이름</string>
+    <string name="recordings_rename_confirm">변경</string>
+    <string name="recordings_delete_title">녹음을 삭제할까요?</string>
+    <string name="recordings_delete_body">%1$s\n파일이 기기에서 완전히 지워집니다.</string>
+    <string name="recordings_group_summary">%1$d개 · %2$s</string>
+    <string name="recordings_cd_share_group">%1$s 전체 보내기</string>
+    <string name="recordings_cd_collapse">접기</string>
+    <string name="recordings_cd_expand">펼치기</string>
+    <string name="recordings_cd_pause">일시정지</string>
+    <string name="recordings_cd_play">재생</string>
+    <string name="recordings_ongoing_suffix"> · 녹음 중</string>
+    <string name="recordings_auto_suffix"> · 자동</string>
+    <string name="recordings_manual_suffix"> · 수동</string>
+    <string name="recordings_silent_warning">소리가 녹음되지 않았습니다 — 마이크가 차단된 상태였습니다</string>
+    <string name="recordings_cd_more">더보기</string>
+    <string name="recordings_menu_share">보내기 / PC로 옮기기</string>
+    <string name="recordings_menu_rename">이름 바꾸기</string>
+    <string name="recordings_share_chooser">녹음 파일 보내기</string>
+
+    <!-- ===== 기타 ===== -->
+    <string name="exception_holiday">공휴일</string>
 </resources>

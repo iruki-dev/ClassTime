@@ -1,12 +1,14 @@
 package dev.iruki.classtime.ui.timetable
 
-import android.app.Application
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import dev.iruki.classtime.data.ClassTimeRepository
 import dev.iruki.classtime.data.Course
 import dev.iruki.classtime.schedule.ScheduleManager
 import java.util.UUID
+import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -27,9 +29,10 @@ data class CourseGroup(
     val slots: List<Slot>,
 )
 
-class TimetableViewModel(
-    private val app: Application,
+@HiltViewModel
+class TimetableViewModel @Inject constructor(
     private val repo: ClassTimeRepository,
+    private val scheduleManager: ScheduleManager,
 ) : ViewModel() {
 
     val courses: StateFlow<List<Course>> = repo.courses
@@ -55,7 +58,7 @@ class TimetableViewModel(
         val gid = groupId ?: UUID.randomUUID().toString()
 
         if (groupId != null) {
-            repo.coursesInGroup(groupId).forEach { ScheduleManager.cancelCourse(app, it.id) }
+            repo.coursesInGroup(groupId).forEach { scheduleManager.cancelCourse(it.id) }
             repo.deleteCourseGroup(groupId)
         }
         // 완전히 동일한 교시(요일+시간)는 중복 제거
@@ -74,13 +77,13 @@ class TimetableViewModel(
                 )
             )
         }
-        ScheduleManager.rescheduleAll(app)
+        scheduleManager.rescheduleAll()
     }
 
     fun deleteGroup(groupId: String) = viewModelScope.launch(Dispatchers.IO) {
-        repo.coursesInGroup(groupId).forEach { ScheduleManager.cancelCourse(app, it.id) }
+        repo.coursesInGroup(groupId).forEach { scheduleManager.cancelCourse(it.id) }
         repo.deleteCourseGroup(groupId)
-        ScheduleManager.rescheduleAll(app)
+        scheduleManager.rescheduleAll()
     }
 
     private fun List<Course>.toGroup(): CourseGroup {

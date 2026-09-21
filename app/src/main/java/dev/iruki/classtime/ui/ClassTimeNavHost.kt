@@ -17,8 +17,11 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.annotation.StringRes
+import androidx.compose.ui.res.stringResource
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import dev.iruki.classtime.R
 import dev.iruki.classtime.ui.home.HomeScreen
 import dev.iruki.classtime.util.SetupIssue
 import dev.iruki.classtime.ui.recordings.RecordingsScreen
@@ -26,10 +29,15 @@ import dev.iruki.classtime.ui.term.TermScreen
 import dev.iruki.classtime.ui.timetable.CourseEditScreen
 import dev.iruki.classtime.ui.timetable.TimetableScreen
 
-private sealed class Dest(val route: String, val label: String, val icon: ImageVector) {
-    data object Home : Dest("home", "녹음", Icons.Filled.Mic)
-    data object Timetable : Dest("timetable", "시간표", Icons.Filled.CalendarMonth)
-    data object Recordings : Dest("recordings", "녹음 목록", Icons.AutoMirrored.Filled.List)
+private sealed class Dest(
+    val route: String,
+    @StringRes val label: Int,
+    val icon: ImageVector,
+) {
+    data object Home : Dest("home", R.string.nav_home, Icons.Filled.Mic)
+    data object Timetable : Dest("timetable", R.string.nav_timetable, Icons.Filled.CalendarMonth)
+    data object Recordings :
+        Dest("recordings", R.string.nav_recordings, Icons.AutoMirrored.Filled.List)
 }
 
 private val bottomDests = listOf(Dest.Home, Dest.Timetable, Dest.Recordings)
@@ -59,8 +67,10 @@ fun ClassTimeNavHost(
                                     restoreState = true
                                 }
                             },
-                            icon = { Icon(dest.icon, contentDescription = dest.label) },
-                            label = { Text(dest.label) },
+                            icon = {
+                                Icon(dest.icon, contentDescription = stringResource(dest.label))
+                            },
+                            label = { Text(stringResource(dest.label)) },
                         )
                     }
                 }

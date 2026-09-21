@@ -1,8 +1,10 @@
 package dev.iruki.classtime.ui.home
 
-import android.app.Application
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import dev.iruki.classtime.data.ClassTimeRepository
 import dev.iruki.classtime.data.RecordingStatus
 import dev.iruki.classtime.data.Session
@@ -11,6 +13,7 @@ import dev.iruki.classtime.data.Term
 import dev.iruki.classtime.service.RecordingService
 import dev.iruki.classtime.util.AppSettings
 import java.time.LocalDate
+import javax.inject.Inject
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -24,12 +27,12 @@ import kotlinx.coroutines.launch
 /** 홈 화면에 보여줄 학기 상태. */
 enum class TermPhase { BEFORE, DURING, AFTER, NONE }
 
-class HomeViewModel(
-    private val app: Application,
+@HiltViewModel
+class HomeViewModel @Inject constructor(
+    @ApplicationContext private val app: Context,
     private val repo: ClassTimeRepository,
+    private val settings: AppSettings,
 ) : ViewModel() {
-
-    private val settings = AppSettings(app)
 
     val status: StateFlow<RecordingStatus> = repo.status
 
@@ -83,7 +86,9 @@ class HomeViewModel(
     val currentSubject = _currentSubject.asStateFlow()
 
     fun refreshCurrentSubject() = viewModelScope.launch {
-        _currentSubject.value = repo.currentSession()?.subject
+        // 보강은 과목명이 빈 문자열일 수 있다. 빈 값을 그대로 흘리면 화면에
+        // "지금은 ‘’ 시간입니다" 가 찍히므로 null 로 정규화한다.
+        _currentSubject.value = repo.currentSession()?.subject?.takeIf { it.isNotBlank() }
     }
 
     fun startManual(subjectOverride: String? = null) =

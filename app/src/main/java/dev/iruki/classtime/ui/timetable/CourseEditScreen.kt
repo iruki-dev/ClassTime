@@ -49,12 +49,14 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import dev.iruki.classtime.ui.classTimeViewModel
+import androidx.hilt.navigation.compose.hiltViewModel
+import dev.iruki.classtime.R
 import dev.iruki.classtime.ui.common.TimePickerDialog
 import dev.iruki.classtime.util.TimeUtils
 
@@ -76,7 +78,7 @@ private data class SlotDraft(
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun CourseEditScreen(groupId: String?, onDone: () -> Unit) {
-    val vm: TimetableViewModel = classTimeViewModel()
+    val vm: TimetableViewModel = hiltViewModel()
     val isEdit = groupId != null
 
     var loaded by remember { mutableStateOf(!isEdit) }
@@ -120,16 +122,28 @@ fun CourseEditScreen(groupId: String?, onDone: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(if (isEdit) "수업 수정" else "수업 추가") },
+                title = {
+                    Text(
+                        stringResource(
+                            if (isEdit) R.string.course_edit_title else R.string.course_add_title
+                        )
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onDone) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "뒤로")
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.action_back),
+                        )
                     }
                 },
                 actions = {
                     if (isEdit) {
                         IconButton(onClick = { confirmDelete = true }) {
-                            Icon(Icons.Filled.Delete, contentDescription = "삭제")
+                            Icon(
+                                Icons.Filled.Delete,
+                                contentDescription = stringResource(R.string.action_delete),
+                            )
                         }
                     }
                 },
@@ -148,29 +162,29 @@ fun CourseEditScreen(groupId: String?, onDone: () -> Unit) {
             OutlinedTextField(
                 value = subject,
                 onValueChange = { subject = it },
-                label = { Text("과목명 *") },
-                supportingText = { Text("녹음 파일 이름과 폴더 이름으로 사용됩니다") },
+                label = { Text(stringResource(R.string.course_subject_label)) },
+                supportingText = { Text(stringResource(R.string.course_subject_support)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
             OutlinedTextField(
                 value = professor,
                 onValueChange = { professor = it },
-                label = { Text("교수님") },
+                label = { Text(stringResource(R.string.course_professor_label)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
             OutlinedTextField(
                 value = room,
                 onValueChange = { room = it },
-                label = { Text("강의실") },
+                label = { Text(stringResource(R.string.course_room_label)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
 
-            Text("수업 시간", style = MaterialTheme.typography.labelLarge)
+            Text(stringResource(R.string.course_slots_title), style = MaterialTheme.typography.labelLarge)
             Text(
-                "요일마다 시간이 달라도 되고, 같은 요일에 두 번 열려도 됩니다. 필요한 만큼 추가하세요.",
+                stringResource(R.string.course_slots_hint),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -200,7 +214,7 @@ fun CourseEditScreen(groupId: String?, onDone: () -> Unit) {
             ) {
                 Icon(Icons.Filled.Add, contentDescription = null)
                 Spacer(Modifier.width(6.dp))
-                Text("시간 추가")
+                Text(stringResource(R.string.course_add_slot))
             }
 
             Row(
@@ -208,9 +222,9 @@ fun CourseEditScreen(groupId: String?, onDone: () -> Unit) {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f)) {
-                    Text("자동 녹음", style = MaterialTheme.typography.bodyLarge)
+                    Text(stringResource(R.string.course_auto_record), style = MaterialTheme.typography.bodyLarge)
                     Text(
-                        "이 시간이 되면 앱이 알아서 녹음을 시작하고 끝나면 멈춥니다.",
+                        stringResource(R.string.course_auto_record_hint),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -218,7 +232,7 @@ fun CourseEditScreen(groupId: String?, onDone: () -> Unit) {
                 Switch(checked = autoRecord, onCheckedChange = { autoRecord = it })
             }
 
-            Text("색상", style = MaterialTheme.typography.labelLarge)
+            Text(stringResource(R.string.course_color), style = MaterialTheme.typography.labelLarge)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 PALETTE.forEach { argb ->
                     Box(
@@ -252,7 +266,15 @@ fun CourseEditScreen(groupId: String?, onDone: () -> Unit) {
                 },
                 enabled = valid,
                 modifier = Modifier.fillMaxWidth(),
-            ) { Text(if (slots.size > 1) "저장 (${slots.size}교시)" else "저장") }
+            ) {
+                Text(
+                    if (slots.size > 1) {
+                        stringResource(R.string.course_save_with_slots, slots.size)
+                    } else {
+                        stringResource(R.string.course_save)
+                    }
+                )
+            }
         }
     }
 
@@ -260,7 +282,9 @@ fun CourseEditScreen(groupId: String?, onDone: () -> Unit) {
         val slot = slots.getOrNull(index) ?: return@let
         TimePickerDialog(
             initialMinute = if (isStart) slot.startMinute else slot.endMinute,
-            title = if (isStart) "시작 시각" else "종료 시각",
+            title = stringResource(
+                if (isStart) R.string.course_pick_start else R.string.course_pick_end
+            ),
             onDismiss = { editingSlot = null },
             onConfirm = { picked ->
                 slots[index] = if (isStart) {
@@ -280,17 +304,19 @@ fun CourseEditScreen(groupId: String?, onDone: () -> Unit) {
     if (confirmDelete) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
-            title = { Text("이 과목을 삭제할까요?") },
-            text = { Text("모든 교시에서 지워지고 예약된 자동 녹음도 취소됩니다. 이미 녹음된 파일은 그대로 남습니다.") },
+            title = { Text(stringResource(R.string.course_delete_title)) },
+            text = { Text(stringResource(R.string.course_delete_body)) },
             confirmButton = {
                 TextButton(onClick = {
                     groupId?.let { vm.deleteGroup(it) }
                     confirmDelete = false
                     onDone()
-                }) { Text("삭제") }
+                }) { Text(stringResource(R.string.action_delete)) }
             },
             dismissButton = {
-                TextButton(onClick = { confirmDelete = false }) { Text("취소") }
+                TextButton(onClick = { confirmDelete = false }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
             },
         )
     }
@@ -314,7 +340,10 @@ private fun SlotRow(
                 Spacer(Modifier.weight(1f))
                 if (canDelete) {
                     IconButton(onClick = onDelete) {
-                        Icon(Icons.Filled.Delete, contentDescription = "이 시간 삭제")
+                        Icon(
+                            Icons.Filled.Delete,
+                            contentDescription = stringResource(R.string.course_cd_delete_slot),
+                        )
                     }
                 }
             }
@@ -329,7 +358,7 @@ private fun SlotRow(
             }
             if (!slot.valid) {
                 Text(
-                    "종료 시각이 시작보다 빠릅니다.",
+                    stringResource(R.string.course_end_before_start),
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodySmall,
                 )
@@ -343,12 +372,12 @@ private fun DayDropdown(dayOfWeek: Int, onChange: (Int) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     Box {
         OutlinedButton(onClick = { expanded = true }) {
-            Text("${TimeUtils.dayName(dayOfWeek)}요일")
+            Text(TimeUtils.dayNameFull(dayOfWeek))
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             (1..7).forEach { dow ->
                 DropdownMenuItem(
-                    text = { Text("${TimeUtils.dayName(dow)}요일") },
+                    text = { Text(TimeUtils.dayNameFull(dow)) },
                     onClick = { onChange(dow); expanded = false },
                 )
             }

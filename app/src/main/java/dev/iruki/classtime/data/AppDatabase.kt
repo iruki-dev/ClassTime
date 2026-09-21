@@ -1,8 +1,6 @@
 package dev.iruki.classtime.data
 
-import android.content.Context
 import androidx.room.Database
-import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import androidx.room.migration.Migration
@@ -21,16 +19,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun scheduleExceptionDao(): ScheduleExceptionDao
 
     companion object {
-        @Volatile private var INSTANCE: AppDatabase? = null
-
-        fun get(context: Context): AppDatabase =
-            INSTANCE ?: synchronized(this) {
-                INSTANCE ?: Room.databaseBuilder(
-                    context.applicationContext,
-                    AppDatabase::class.java,
-                    "classtime.db",
-                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build().also { INSTANCE = it }
-            }
+        /** 인스턴스 생성은 Hilt(AppModule)가 맡는다. 여기에는 스키마 지식만 둔다. */
+        const val NAME = "classtime.db"
 
         /**
          * v1 -> v2: 과목에 groupId 추가(기존 행은 각자 단독 그룹으로 백필),

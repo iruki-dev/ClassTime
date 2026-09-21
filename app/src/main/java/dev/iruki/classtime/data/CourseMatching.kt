@@ -162,7 +162,9 @@ object CourseMatching {
     )
 
     private fun ScheduleException.toSession() = Session(
-        subject = subject.ifBlank { "보강" },
+        // 빈 과목명을 여기서 채우지 않는다. 표시 문구는 로캘에 따라 달라지므로
+        // 이 순수 규칙 계층이 아니라 화면·서비스 계층이 정한다.
+        subject = subject,
         professor = professor,
         room = room,
         startMinute = startMinute,
