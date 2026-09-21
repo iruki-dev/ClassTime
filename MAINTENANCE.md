@@ -114,9 +114,24 @@ release 워크플로에 필요한 GitHub Secrets:
 | `CLASSTIME_KEYSTORE_BASE64` | `base64 -w0 secrets/classtime-release.jks` |
 | `CLASSTIME_KEYSTORE_PASSWORD` | `keystore.properties` 의 `storePassword` |
 | `CLASSTIME_KEY_ALIAS` | 보통 `classtime` |
-| `FIREBASE_SERVICE_ACCOUNT_JSON` | 서비스 계정 JSON 파일 내용 전체 |
 | `FIREBASE_APP_ID` | `firebase apps:list ANDROID` |
 | `FIREBASE_TESTERS` | 쉼표로 구분한 테스터 이메일 |
+| 인증 (아래 둘 중 **하나**) | |
+| `FIREBASE_TOKEN` | `firebase login:ci` 가 출력하는 refresh token |
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | 서비스 계정 키 JSON 파일 **내용 전체** (base64 아님) |
+
+### 인증을 따로 등록해야 하는 이유
+
+플러그인이 받아들이는 인증은 세 가지뿐이다(`CredentialsRetriever`):
+서비스 계정 JSON, `FIREBASE_TOKEN`, 그리고 Firebase CLI 로그인 캐시.
+
+로컬에서는 세 번째가 동작한다 — `firebase login` 이 개인 refresh token 을
+`~/.config/configstore/firebase-tools.json` 에 저장해 두기 때문이다. 하지만 그 파일은
+그 기기에만 있고 GitHub 러너에는 브라우저도 없으므로, CI 는 앞의 두 가지 중 하나가 필요하다.
+
+`FIREBASE_TOKEN` 은 한 줄로 끝나지만 **개인 계정에 묶인다**(비밀번호 변경·권한 회수 시 끊김).
+서비스 계정은 설정이 번거로운 대신 독립적으로 교체·폐기할 수 있는 기계 신분증이다.
+워크플로는 둘 중 등록된 것을 알아서 고른다.
 
 CI 는 `version.properties` 에 커밋된 versionCode 를 그대로 쓴다. 배포 전에
 `./gradlew bumpVersionCode` 로 올리고 커밋하는 것이 정해진 순서다. CI 가 임의로

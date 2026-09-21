@@ -289,10 +289,12 @@ tasks.register("deployConfigCheck") {
         }
         if (firebaseAuthMethod == null) {
             add(
-                "Not authenticated with Firebase. Easiest here: run `firebase login --no-localhost` " +
-                    "- the Gradle plugin picks the CLI's credentials up automatically, no service " +
-                    "account or JSON key needed. For CI instead, point GOOGLE_APPLICATION_CREDENTIALS " +
-                    "at a service account JSON holding the Firebase App Distribution Admin role."
+                "Not authenticated with Firebase. On this machine: run " +
+                    "`firebase login --no-localhost` - the Gradle plugin picks the CLI's stored " +
+                    "credentials up automatically, no service account or JSON key needed. " +
+                    "CI has no browser and no such cache, so it needs one of: FIREBASE_TOKEN " +
+                    "(from `firebase login:ci`), or GOOGLE_APPLICATION_CREDENTIALS pointing at a " +
+                    "service account JSON with the Firebase App Distribution Admin role."
             )
         } else if (firebaseCredentialsValue != null && !resolvePath(firebaseCredentialsValue).isFile) {
             add("Service account JSON not found at: $firebaseCredentialsValue")

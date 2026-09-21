@@ -45,22 +45,34 @@ jobs:
           mkdir -p secrets
           printf '%s' "$KEYSTORE_BASE64" | base64 -d > secrets/classtime-release.jks
 
-      - name: Restore service account
+      # 플러그인(CredentialsRetriever)이 받아들이는 인증은 세 가지다:
+      # 서비스 계정 JSON, FIREBASE_TOKEN, 그리고 Firebase CLI 로그인 캐시.
+      # 세 번째는 사람이 브라우저로 로그인한 기기에만 있으므로 CI 에서는 쓸 수 없다.
+      # 둘 중 등록된 것을 알아서 쓴다.
+      - name: Resolve Firebase credentials
         env:
           SA_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
         run: |
-          if [ -z "$SA_JSON" ]; then
-            echo "::error::FIREBASE_SERVICE_ACCOUNT_JSON secret 이 없습니다."
+          if [ -n "$SA_JSON" ]; then
+            printf '%s' "$SA_JSON" > "$RUNNER_TEMP/service-account.json"
+            echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/service-account.json" >> "$GITHUB_ENV"
+            echo "서비스 계정으로 인증합니다."
+          elif [ -n "$FIREBASE_TOKEN" ]; then
+            echo "FIREBASE_TOKEN=$FIREBASE_TOKEN" >> "$GITHUB_ENV"
+            echo "FIREBASE_TOKEN 으로 인증합니다."
+          else
+            echo "::error::Firebase 인증 정보가 없습니다. 둘 중 하나를 시크릿으로 등록하세요."
+            echo "::error::  FIREBASE_TOKEN                  - 로컬에서 'firebase login:ci' 로 발급"
+            echo "::error::  FIREBASE_SERVICE_ACCOUNT_JSON   - 서비스 계정 키 JSON 파일 내용 전체"
             exit 1
           fi
-          printf '%s' "$SA_JSON" > "$RUNNER_TEMP/service-account.json"
 
       - name: Verify deployment config
         env:
           CLASSTIME_KEYSTORE_FILE: secrets/classtime-release.jks
           CLASSTIME_KEYSTORE_PASSWORD: ${{ secrets.CLASSTIME_KEYSTORE_PASSWORD }}
           CLASSTIME_KEY_ALIAS: ${{ secrets.CLASSTIME_KEY_ALIAS }}
-          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/service-account.json
           FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
           FIREBASE_TESTERS: ${{ secrets.FIREBASE_TESTERS }}
         run: ./gradlew deployConfigCheck
@@ -70,7 +82,6 @@ jobs:
           CLASSTIME_KEYSTORE_FILE: secrets/classtime-release.jks
           CLASSTIME_KEYSTORE_PASSWORD: ${{ secrets.CLASSTIME_KEYSTORE_PASSWORD }}
           CLASSTIME_KEY_ALIAS: ${{ secrets.CLASSTIME_KEY_ALIAS }}
-          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/service-account.json
           FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
           FIREBASE_TESTERS: ${{ secrets.FIREBASE_TESTERS }}
           FIREBASE_RELEASE_NOTES: ${{ inputs.release_notes }}
