@@ -9,7 +9,9 @@ import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
+import androidx.annotation.StringRes
 import androidx.core.content.ContextCompat
+import dev.iruki.classtime.R
 
 /** 자동 녹음이 제대로 동작하려면 필요한 설정 항목. */
 enum class SetupId {
@@ -39,11 +41,15 @@ enum class SetupId {
     BATTERY,
 }
 
+/**
+ * 문구를 String 이 아니라 리소스 id 로 들고 다닌다. 그래야 이 목록을 만드는 시점이 아니라
+ * **화면에 그리는 시점의 로캘**로 번역되고, 기기 언어가 바뀌어도 그대로 따라간다.
+ */
 data class SetupIssue(
     val id: SetupId,
-    val title: String,
-    val detail: String,
-    val actionLabel: String,
+    @StringRes val title: Int,
+    @StringRes val detail: Int,
+    @StringRes val actionLabel: Int,
     /** true 면 자동 녹음이 실패하거나 무음이 된다. false 면 품질 저하 수준. */
     val critical: Boolean,
 )
@@ -99,9 +105,9 @@ object AppPermissions {
             add(
                 SetupIssue(
                     id = SetupId.MICROPHONE,
-                    title = "마이크 권한이 필요합니다",
-                    detail = "권한이 없으면 녹음을 시작할 수 없습니다.",
-                    actionLabel = "권한 허용",
+                    title = R.string.setup_mic_title,
+                    detail = R.string.setup_mic_detail,
+                    actionLabel = R.string.setup_action_grant,
                     critical = true,
                 )
             )
@@ -110,11 +116,9 @@ object AppPermissions {
             add(
                 SetupIssue(
                     id = SetupId.BACKGROUND_MIC,
-                    title = "‘다른 앱 위에 표시’ (선택)",
-                    detail = "일부 기기에서는 이 권한이 백그라운드 마이크 제한의 예외로 인정됩니다. " +
-                        "자동 녹음 소리 문제는 주로 아래 ‘대기 모드’로 해결되지만, 켜 두면 " +
-                        "안전장치가 하나 더 생깁니다.",
-                    actionLabel = "설정 열기",
+                    title = R.string.setup_overlay_title,
+                    detail = R.string.setup_overlay_detail,
+                    actionLabel = R.string.setup_action_open_settings,
                     critical = false,
                 )
             )
@@ -123,10 +127,9 @@ object AppPermissions {
             add(
                 SetupIssue(
                     id = SetupId.NOTIFICATIONS,
-                    title = "알림 권한이 꺼져 있습니다",
-                    detail = "녹음 중 알림은 포그라운드 서비스 유지에 필요합니다. " +
-                        "무음 녹음 경고도 이 알림으로 전달됩니다.",
-                    actionLabel = "권한 허용",
+                    title = R.string.setup_notifications_title,
+                    detail = R.string.setup_notifications_detail,
+                    actionLabel = R.string.setup_action_grant,
                     critical = false,
                 )
             )
@@ -135,9 +138,9 @@ object AppPermissions {
             add(
                 SetupIssue(
                     id = SetupId.EXACT_ALARM,
-                    title = "‘알람 및 리마인더’가 꺼져 있습니다",
-                    detail = "꺼져 있으면 시스템이 알람을 몇 분씩 미루기 때문에 수업 앞부분이 잘립니다.",
-                    actionLabel = "설정 열기",
+                    title = R.string.setup_exact_alarm_title,
+                    detail = R.string.setup_exact_alarm_detail,
+                    actionLabel = R.string.setup_action_open_settings,
                     critical = false,
                 )
             )
@@ -146,9 +149,9 @@ object AppPermissions {
             add(
                 SetupIssue(
                     id = SetupId.BATTERY,
-                    title = "배터리 최적화 대상입니다",
-                    detail = "제조사 절전 기능이 앱을 종료하면 자동 녹음이 통째로 실패할 수 있습니다.",
-                    actionLabel = "제한 없음으로 변경",
+                    title = R.string.setup_battery_title,
+                    detail = R.string.setup_battery_detail,
+                    actionLabel = R.string.setup_battery_action,
                     critical = false,
                 )
             )

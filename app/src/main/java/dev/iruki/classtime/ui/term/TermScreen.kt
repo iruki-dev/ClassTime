@@ -39,14 +39,16 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dev.iruki.classtime.R
 import dev.iruki.classtime.data.ExceptionType
 import dev.iruki.classtime.data.ScheduleException
-import dev.iruki.classtime.ui.classTimeViewModel
+import androidx.hilt.navigation.compose.hiltViewModel
 import dev.iruki.classtime.ui.common.DatePickerModal
 import dev.iruki.classtime.ui.common.TimePickerDialog
 import dev.iruki.classtime.util.TimeUtils
@@ -59,7 +61,7 @@ private val dateFmt = DateTimeFormatter.ofPattern("yyyy.MM.dd (E)", Locale.KOREA
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TermScreen(onBack: () -> Unit) {
-    val vm: TermViewModel = classTimeViewModel()
+    val vm: TermViewModel = hiltViewModel()
     val term by vm.term.collectAsStateWithLifecycle()
     val exceptions by vm.upcomingExceptions.collectAsStateWithLifecycle()
     val courseOptions by vm.courseOptions.collectAsStateWithLifecycle()
@@ -72,10 +74,13 @@ fun TermScreen(onBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("학기 · 휴강 · 보강") },
+                title = { Text(stringResource(R.string.term_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "뒤로")
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.action_back),
+                        )
                     }
                 },
             )
@@ -88,41 +93,57 @@ fun TermScreen(onBack: () -> Unit) {
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("학기 기간", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.term_period_title), style = MaterialTheme.typography.titleMedium)
             Text(
-                "개강일 전과 종강일 후에는 자동 녹음이 잡히지 않습니다. 비워두면 항상 켜집니다.",
+                stringResource(R.string.term_period_hint),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedButton(onClick = { pickingStart = true }, modifier = Modifier.weight(1f)) {
-                    Text("개강  " + (term?.startDate?.format(dateFmt) ?: "미설정"))
+                    Text(
+                        stringResource(
+                            R.string.term_start_label,
+                            term?.startDate?.format(dateFmt) ?: stringResource(R.string.value_unset),
+                        )
+                    )
                 }
                 OutlinedButton(onClick = { pickingEnd = true }, modifier = Modifier.weight(1f)) {
-                    Text("종강  " + (term?.endDate?.format(dateFmt) ?: "미설정"))
+                    Text(
+                        stringResource(
+                            R.string.term_end_label,
+                            term?.endDate?.format(dateFmt) ?: stringResource(R.string.value_unset),
+                        )
+                    )
                 }
             }
             if (term?.startDate != null || term?.endDate != null) {
-                TextButton(onClick = { vm.setTerm(null, null) }) { Text("학기 기간 해제") }
+                TextButton(onClick = { vm.setTerm(null, null) }) {
+                    Text(stringResource(R.string.term_clear))
+                }
             }
 
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
 
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    "다가오는 휴강 · 보강",
+                    stringResource(R.string.term_exceptions_title),
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.weight(1f),
                 )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { addingCancel = true }) { Text("휴강 추가") }
-                OutlinedButton(onClick = { addingMakeup = true }) { Text("보강 추가") }
+                OutlinedButton(onClick = { addingCancel = true }) {
+                    Text(stringResource(R.string.term_add_cancel))
+                }
+                OutlinedButton(onClick = { addingMakeup = true }) {
+                    Text(stringResource(R.string.term_add_makeup))
+                }
             }
 
             if (exceptions.isEmpty()) {
                 Text(
-                    "등록된 예외가 없습니다.",
+                    stringResource(R.string.term_no_exceptions),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 4.dp),
@@ -182,7 +203,10 @@ private fun ExceptionRow(ex: ScheduleException, onDelete: () -> Unit) {
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        if (ex.type == ExceptionType.CANCEL) "휴강" else "보강",
+                        stringResource(
+                            if (ex.type == ExceptionType.CANCEL) R.string.term_type_cancel
+                            else R.string.term_type_makeup
+                        ),
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
                         color = if (ex.type == ExceptionType.CANCEL)
@@ -192,13 +216,25 @@ private fun ExceptionRow(ex: ScheduleException, onDelete: () -> Unit) {
                     Text(ex.date.format(dateFmt), style = MaterialTheme.typography.bodyMedium)
                 }
                 val detail = buildString {
-                    append(ex.subject.ifBlank { if (ex.courseGroupId == null) "전체(공휴일)" else "과목" })
+                    append(
+                        ex.subject.ifBlank {
+                            stringResource(
+                                if (ex.courseGroupId == null) R.string.term_scope_whole_day
+                                else R.string.term_scope_course
+                            )
+                        }
+                    )
                     if (ex.type == ExceptionType.MAKEUP) {
                         append("  ")
                         append(TimeUtils.minuteToText(ex.startMinute))
                         append("–")
                         append(TimeUtils.minuteToText(ex.endMinute))
-                        append(if (ex.autoRecord) " · 자동" else " · 수동")
+                        append(
+                            stringResource(
+                                if (ex.autoRecord) R.string.term_auto_suffix
+                                else R.string.term_manual_suffix
+                            )
+                        )
                     }
                 }
                 Text(
@@ -208,7 +244,7 @@ private fun ExceptionRow(ex: ScheduleException, onDelete: () -> Unit) {
                 )
             }
             IconButton(onClick = onDelete) {
-                Icon(Icons.Filled.Close, contentDescription = "삭제")
+                Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.action_delete))
             }
         }
     }
@@ -229,15 +265,20 @@ private fun AddCancelDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("휴강 추가") },
+        title = { Text(stringResource(R.string.term_add_cancel)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedButton(onClick = { pickingDate = true }, modifier = Modifier.fillMaxWidth()) {
-                    Text(date?.format(dateFmt) ?: "날짜 선택")
+                    Text(date?.format(dateFmt) ?: stringResource(R.string.action_pick_date))
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(wholeDay, { wholeDay = true }, { Text("전체(공휴일)") })
-                    FilterChip(!wholeDay, { wholeDay = false }, { Text("특정 과목") },
+                    FilterChip(
+                        wholeDay,
+                        { wholeDay = true },
+                        { Text(stringResource(R.string.term_scope_whole_day)) },
+                    )
+                    FilterChip(!wholeDay, { wholeDay = false },
+                        { Text(stringResource(R.string.term_scope_specific_course)) },
                         enabled = courseOptions.isNotEmpty())
                 }
                 if (!wholeDay) {
@@ -253,9 +294,11 @@ private fun AddCancelDialog(
                     if (wholeDay) onHoliday(d)
                     else selected?.let { onCourseCancel(d, it.groupId, it.subject) }
                 },
-            ) { Text("추가") }
+            ) { Text(stringResource(R.string.action_add)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("취소") } },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
+        },
     )
     if (pickingDate) {
         DatePickerModal(date, { pickingDate = false }, { date = it })
@@ -284,11 +327,11 @@ private fun AddMakeupDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("보강 추가") },
+        title = { Text(stringResource(R.string.term_add_makeup)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedButton(onClick = { pickingDate = true }, modifier = Modifier.fillMaxWidth()) {
-                    Text(date?.format(dateFmt) ?: "날짜 선택")
+                    Text(date?.format(dateFmt) ?: stringResource(R.string.action_pick_date))
                 }
                 if (courseOptions.isNotEmpty()) {
                     CourseDropdown(courseOptions, selected, allowNone = true) { selected = it }
@@ -297,21 +340,21 @@ private fun AddMakeupDialog(
                     OutlinedTextField(
                         value = freeSubject,
                         onValueChange = { freeSubject = it },
-                        label = { Text("과목명") },
+                        label = { Text(stringResource(R.string.term_subject_field)) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = { pickingStart = true }, modifier = Modifier.weight(1f)) {
-                        Text("시작 ${TimeUtils.minuteToText(start)}")
+                        Text(stringResource(R.string.term_time_start, TimeUtils.minuteToText(start)))
                     }
                     OutlinedButton(onClick = { pickingEnd = true }, modifier = Modifier.weight(1f)) {
-                        Text("종료 ${TimeUtils.minuteToText(end)}")
+                        Text(stringResource(R.string.term_time_end, TimeUtils.minuteToText(end)))
                     }
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("자동 녹음", Modifier.weight(1f))
+                    Text(stringResource(R.string.term_auto_record), Modifier.weight(1f))
                     Switch(checked = auto, onCheckedChange = { auto = it })
                 }
             }
@@ -322,15 +365,17 @@ private fun AddMakeupDialog(
                 onClick = {
                     onConfirm(date!!, subject, selected?.groupId, start, end, auto)
                 },
-            ) { Text("추가") }
+            ) { Text(stringResource(R.string.action_add)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("취소") } },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
+        },
     )
     if (pickingDate) DatePickerModal(date, { pickingDate = false }, { date = it })
-    if (pickingStart) TimePickerDialog(start, "시작 시각", { pickingStart = false }) {
+    if (pickingStart) TimePickerDialog(start, stringResource(R.string.term_pick_start), { pickingStart = false }) {
         start = it; if (end <= it) end = (it + 75).coerceAtMost(23 * 60 + 59); pickingStart = false
     }
-    if (pickingEnd) TimePickerDialog(end, "종료 시각", { pickingEnd = false }) {
+    if (pickingEnd) TimePickerDialog(end, stringResource(R.string.term_pick_end), { pickingEnd = false }) {
         end = it; pickingEnd = false
     }
 }
@@ -346,10 +391,11 @@ private fun CourseDropdown(
     var expanded by remember { mutableStateOf(false) }
     ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
         OutlinedTextField(
-            value = selected?.subject ?: (if (allowNone) "직접 입력" else ""),
+            value = selected?.subject
+                ?: (if (allowNone) stringResource(R.string.term_course_manual_entry) else ""),
             onValueChange = {},
             readOnly = true,
-            label = { Text("연결할 과목") },
+            label = { Text(stringResource(R.string.term_course_link_label)) },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
             modifier = Modifier
                 .menuAnchor(MenuAnchorType.PrimaryNotEditable)
@@ -357,7 +403,10 @@ private fun CourseDropdown(
         )
         ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             if (allowNone) {
-                DropdownMenuItem(text = { Text("직접 입력") }, onClick = { onSelect(null); expanded = false })
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.term_course_manual_entry)) },
+                    onClick = { onSelect(null); expanded = false },
+                )
             }
             options.forEach { opt ->
                 DropdownMenuItem(

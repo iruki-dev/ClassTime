@@ -1,5 +1,7 @@
 package dev.iruki.classtime.ui.common
 
+import dev.iruki.classtime.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
@@ -32,9 +34,9 @@ fun TimePickerDialog(
         title = { Text(title) },
         text = { TimePicker(state = state) },
         confirmButton = {
-            TextButton(onClick = { onConfirm(state.hour * 60 + state.minute) }) { Text("확인") }
+            TextButton(onClick = { onConfirm(state.hour * 60 + state.minute) }) { Text(stringResource(R.string.action_confirm)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("취소") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) } },
     )
 }
 
@@ -57,9 +59,9 @@ fun DatePickerModal(
                     onPick(Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDate())
                 }
                 onDismiss()
-            }) { Text("확인") }
+            }) { Text(stringResource(R.string.action_confirm)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("취소") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) } },
     ) {
         DatePicker(state = state)
     }

@@ -11,20 +11,28 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.lifecycleScope
+import dagger.hilt.android.AndroidEntryPoint
 import dev.iruki.classtime.data.ClassTimeRepository
 import dev.iruki.classtime.schedule.ScheduleManager
 import dev.iruki.classtime.service.RecordingService
 import dev.iruki.classtime.ui.ClassTimeNavHost
 import dev.iruki.classtime.ui.theme.ClassTimeTheme
+import dev.iruki.classtime.util.AppLog
 import dev.iruki.classtime.util.AppPermissions
 import dev.iruki.classtime.util.AppSettings
 import dev.iruki.classtime.util.SetupId
 import dev.iruki.classtime.util.SetupIssue
+import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+@AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+    @Inject lateinit var repository: ClassTimeRepository
+    @Inject lateinit var scheduleManager: ScheduleManager
+    @Inject lateinit var settings: AppSettings
 
     private var setupIssues by mutableStateOf<List<SetupIssue>>(emptyList())
 
@@ -67,12 +75,12 @@ class MainActivity : ComponentActivity() {
      */
     private fun ensureStandby() {
         lifecycleScope.launch {
-            if (!AppSettings(this@MainActivity).standbyEnabled) return@launch
+            if (!settings.standbyEnabled) return@launch
             if (!AppPermissions.micGranted(this@MainActivity)) return@launch
             val hasAutoCourse = withContext(Dispatchers.IO) {
-                runCatching {
-                    ClassTimeRepository.get(this@MainActivity).allCourses().any { it.autoRecord }
-                }.getOrDefault(false)
+                runCatching { repository.allCourses().any { it.autoRecord } }
+                    .onFailure { AppLog.e(TAG, "과목 조회 실패 - 대기 모드를 켜지 못했습니다", it) }
+                    .getOrDefault(false)
             }
             if (hasAutoCourse) RecordingService.startStandby(this@MainActivity)
         }
@@ -108,10 +116,15 @@ class MainActivity : ComponentActivity() {
 
     private fun reschedule() {
         lifecycleScope.launch(Dispatchers.IO) {
+            // 여기서 조용히 실패하면 알람이 하나도 걸리지 않아 자동 녹음이 통째로 멈춘다.
             runCatching {
-                ScheduleManager.rescheduleAll(this@MainActivity)
-                ScheduleManager.catchUpIfMidClass(this@MainActivity)
-            }
+                scheduleManager.rescheduleAll()
+                scheduleManager.catchUpIfMidClass()
+            }.onFailure { AppLog.e(TAG, "알람 재설정 실패 - 자동 녹음이 동작하지 않습니다", it) }
         }
+    }
+
+    private companion object {
+        const val TAG = "MainActivity"
     }
 }

@@ -6,7 +6,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.os.Build
-import android.util.Log
+import dev.iruki.classtime.util.AppLog
 
 /**
  * 녹음 하드 리밋. [AlarmManager] 를 쓰기 때문에 기기가 잠들어 있어도 정확히 깨어난다.
@@ -17,7 +17,7 @@ import android.util.Log
 class RecordingWatchdogReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
-        Log.w(TAG, "워치독 발동 - 녹음을 강제로 마무리합니다")
+        AppLog.w(TAG, "워치독 발동 - 녹음을 강제로 마무리합니다")
         RecordingService.stop(context)
     }
 

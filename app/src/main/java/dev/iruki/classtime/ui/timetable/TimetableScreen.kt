@@ -29,6 +29,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -38,8 +39,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dev.iruki.classtime.R
 import dev.iruki.classtime.data.Course
-import dev.iruki.classtime.ui.classTimeViewModel
+import androidx.hilt.navigation.compose.hiltViewModel
 import dev.iruki.classtime.util.TimeUtils
 
 /** 1분을 몇 dp 로 그릴지. 75분 수업이 약 79dp 가 된다. */
@@ -54,23 +56,29 @@ fun TimetableScreen(
     onEditCourse: (String) -> Unit,
     onOpenTerm: () -> Unit,
 ) {
-    val vm: TimetableViewModel = classTimeViewModel()
+    val vm: TimetableViewModel = hiltViewModel()
     val courses by vm.courses.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("시간표") },
+                title = { Text(stringResource(R.string.timetable_title)) },
                 actions = {
                     IconButton(onClick = onOpenTerm) {
-                        Icon(Icons.Filled.EditCalendar, contentDescription = "학기 · 휴강 · 보강")
+                        Icon(
+                            Icons.Filled.EditCalendar,
+                            contentDescription = stringResource(R.string.timetable_cd_term),
+                        )
                     }
                 },
             )
         },
         floatingActionButton = {
             FloatingActionButton(onClick = onAddCourse) {
-                Icon(Icons.Filled.Add, contentDescription = "수업 추가")
+                Icon(
+                    Icons.Filled.Add,
+                    contentDescription = stringResource(R.string.timetable_cd_add_course),
+                )
             }
         },
     ) { inner ->
@@ -93,10 +101,13 @@ private fun EmptyTimetable(modifier: Modifier = Modifier) {
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text("아직 등록된 수업이 없습니다", style = MaterialTheme.typography.titleMedium)
+        Text(
+            stringResource(R.string.timetable_empty_title),
+            style = MaterialTheme.typography.titleMedium,
+        )
         Spacer(Modifier.height(8.dp))
         Text(
-            "오른쪽 아래 + 버튼으로 수업을 추가하면 그 시간에 맞춰 자동으로 녹음이 시작됩니다.",
+            stringResource(R.string.timetable_empty_hint),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -219,7 +230,11 @@ private fun CourseBlock(course: Course, gridStart: Int, onClick: () -> Unit) {
             )
         }
         if (!course.autoRecord && height > 40.dp) {
-            Text("자동 꺼짐", color = Color.White, fontSize = 9.sp)
+            Text(
+                stringResource(R.string.timetable_auto_off),
+                color = Color.White,
+                fontSize = 9.sp,
+            )
         }
     }
 }
