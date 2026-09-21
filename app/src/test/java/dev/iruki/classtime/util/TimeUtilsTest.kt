@@ -92,9 +92,13 @@ class TimeUtilsTest {
     }
 
     @Test
-    fun dayName_isKorean() {
-        assertThat(TimeUtils.dayName(1)).isEqualTo("월")
-        assertThat(TimeUtils.dayName(7)).isEqualTo("일")
+    fun dayName_isLocalized() {
+        // 로캘을 명시해 기기 설정과 무관하게 검증한다.
+        assertThat(TimeUtils.dayName(1, java.util.Locale.KOREA)).isEqualTo("월")
+        assertThat(TimeUtils.dayName(7, java.util.Locale.KOREA)).isEqualTo("일")
+        assertThat(TimeUtils.dayName(1, java.util.Locale.ENGLISH)).isEqualTo("Mon")
+        // 범위 밖 입력은 예외 대신 물음표.
+        assertThat(TimeUtils.dayName(0, java.util.Locale.KOREA)).isEqualTo("?")
     }
 
     @Test
