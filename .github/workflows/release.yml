@@ -17,19 +17,24 @@ jobs:
     timeout-minutes: 40
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '17'
 
+      # v3 의 packages 기본값은 'tools platform-tools' 인데, Google 이 레거시 tools
+      # 패키지 제공을 중단해 sdkmanager 가 그대로 실패한다. v4 는 기본값에서 tools 를
+      # 뺐고, 여기서는 필요한 패키지를 명시해 러너 이미지 구성에 의존하지 않는다.
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-34 build-tools;34.0.0'
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       # 고정 keystore 를 secret 에서 복원한다. 이 키로 서명해야 기존 설치본 위에
       # 덮어쓰기 업데이트가 된다. 로컬과 CI 가 반드시 같은 키를 써야 한다.
