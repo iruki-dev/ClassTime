@@ -67,7 +67,9 @@ import dev.iruki.classtime.R
 import dev.iruki.classtime.ui.common.AppSwitch
 import dev.iruki.classtime.ui.common.DetailTopBar
 import dev.iruki.classtime.ui.common.TimePickerDialog
+import dev.iruki.classtime.ui.common.clockLabel
 import dev.iruki.classtime.ui.theme.CourseColors
+import dev.iruki.classtime.ui.theme.CourseIcons
 import dev.iruki.classtime.ui.theme.tones
 import dev.iruki.classtime.util.TimeUtils
 
@@ -109,6 +111,9 @@ fun CourseEditScreen(groupId: String?, onDone: () -> Unit) {
     var autoRecord by remember { mutableStateOf(true) }
     var colorSeed by remember { mutableIntStateOf(CourseColors.default.seed) }
     var colorChosen by remember { mutableStateOf(isEdit) }
+    // 빈 값 = 아직 고르지 않음 → 과목명으로 짐작한 아이콘을 보여 주고, 이름이 바뀌면 따라 바뀐다.
+    var iconKey by remember { mutableStateOf("") }
+    var pickIcon by remember { mutableStateOf(false) }
 
     var nextKey by remember { mutableLongStateOf(1L) }
     val groups = remember {
@@ -126,6 +131,7 @@ fun CourseEditScreen(groupId: String?, onDone: () -> Unit) {
                 room = g.room
                 autoRecord = g.autoRecord
                 colorSeed = CourseColors.of(g.colorArgb).seed
+                iconKey = g.icon
                 groups.clear()
                 groupSlots(g.slots).forEach { (days, time) ->
                     groups.add(TimeGroup(nextKey++, days, time.first, time.second))
@@ -152,6 +158,7 @@ fun CourseEditScreen(groupId: String?, onDone: () -> Unit) {
             room = room.trim(),
             autoRecord = autoRecord,
             colorArgb = colorSeed,
+            icon = iconKey,
             slots = groups.toSlots(),
         )
         onDone()
@@ -186,6 +193,9 @@ fun CourseEditScreen(groupId: String?, onDone: () -> Unit) {
                 .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 32.dp),
         ) {
             val showError = subjectTouched && subject.isBlank()
+            val icon = CourseIcons.of(iconKey, subject)
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Top) {
+            IconPickerButton(icon = icon, onClick = { pickIcon = true }, modifier = Modifier.padding(top = 8.dp))
             OutlinedTextField(
                 value = subject,
                 onValueChange = { subject = it; subjectTouched = true },
@@ -209,8 +219,9 @@ fun CourseEditScreen(groupId: String?, onDone: () -> Unit) {
                 } else null,
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next, capitalization = KeyboardCapitalization.Sentences),
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.weight(1f),
             )
+            }
             Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
                     value = professor,
@@ -300,34 +311,42 @@ fun CourseEditScreen(groupId: String?, onDone: () -> Unit) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Row(Modifier.fillMaxWidth().padding(top = 8.dp).selectableGroup()) {
-                CourseColors.palette.forEach { color ->
-                    val selected = color.seed == colorSeed
-                    val (bg, fg) = color.tones()
-                    val label = stringResource(color.label)
-                    Box(
-                        Modifier
-                            .weight(1f)
-                            .height(48.dp)
-                            .clip(CircleShape)
-                            .selectable(selected = selected, role = Role.RadioButton) {
-                                colorSeed = color.seed
-                                colorChosen = true
-                            }
-                            .semantics { contentDescription = label },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Box(
-                            Modifier
-                                .size(36.dp)
-                                .then(
-                                    if (selected) Modifier.border(2.dp, MaterialTheme.colorScheme.onSurface, CircleShape).padding(4.dp)
-                                    else Modifier
+            Column(
+                Modifier.fillMaxWidth().padding(top = 12.dp).selectableGroup(),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                CourseColors.palette.chunked(5).forEach { row ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        row.forEach { color ->
+                            val selected = color.seed == colorSeed
+                            val (bg, fg) = color.tones()
+                            Row(
+                                Modifier
+                                    .weight(1f)
+                                    .height(48.dp)
+                                    .then(
+                                        if (selected) Modifier
+                                            .border(2.dp, MaterialTheme.colorScheme.onSurface, MaterialTheme.shapes.medium)
+                                            .padding(3.dp)
+                                        else Modifier
+                                    )
+                                    .clip(MaterialTheme.shapes.small)
+                                    .background(bg)
+                                    .selectable(selected = selected, role = Role.RadioButton) {
+                                        colorSeed = color.seed
+                                        colorChosen = true
+                                    },
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                if (selected) Icon(Icons.Rounded.Check, contentDescription = null, tint = fg, modifier = Modifier.size(16.dp))
+                                Text(
+                                    stringResource(color.label),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = fg,
+                                    maxLines = 1,
                                 )
-                                .background(bg, CircleShape),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            if (selected) Icon(Icons.Rounded.Check, contentDescription = null, tint = fg, modifier = Modifier.size(18.dp))
+                            }
                         }
                     }
                 }
@@ -351,6 +370,18 @@ fun CourseEditScreen(groupId: String?, onDone: () -> Unit) {
                     group.copy(endMinute = picked)
                 }
                 editing = null
+            },
+        )
+    }
+
+    if (pickIcon) {
+        IconPickerSheet(
+            subject = subject,
+            selected = CourseIcons.of(iconKey, subject).key,
+            onDismiss = { pickIcon = false },
+            onPick = { key ->
+                iconKey = key
+                pickIcon = false
             },
         )
     }
@@ -440,7 +471,7 @@ private fun ErrorText(text: String) {
     Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
 }
 
-/** M3 외곽선 입력과 같은 모양의 시각 선택 칸. 누르면 시계 선택기가 열린다. */
+/** M3 외곽선 입력과 같은 모양의 시각 선택 칸. ‘오전 9:00’처럼 보여 주고, 누르면 시각 고르기가 열린다. */
 @Composable
 private fun TimeField(label: String, minute: Int, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Surface(
@@ -456,7 +487,7 @@ private fun TimeField(label: String, minute: Int, onClick: () -> Unit, modifier:
         ) {
             Column(Modifier.weight(1f)) {
                 Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(TimeUtils.minuteToText(minute), style = MaterialTheme.typography.bodyLarge)
+                Text(clockLabel(minute), style = MaterialTheme.typography.bodyLarge)
             }
             Icon(Icons.Rounded.Schedule, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }

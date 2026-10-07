@@ -10,51 +10,69 @@ import kotlin.math.max
 import kotlin.math.min
 
 /**
- * 과목 색 하나. DB 에는 [seed] 만 저장하고, 화면은 톤 쌍을 쓴다.
+ * 과목 색 하나. DB 에는 [seed] 만 저장하고, 화면은 시간표 칸 톤을 쓴다.
  *
- * 톤은 HCT 기준: 라이트는 컨테이너 T90 + 글자 T30, 다크는 컨테이너 T30 + 글자 T90.
- * 모든 쌍이 7:1 이상이다. 색조는 110°–340° 에서 고르게 나눴고, 녹음 빨강(27°)과
- * 확인 필요 노랑(75°)에서 35° 이상 떨어뜨렸다.
+ * 색은 **시간표 칸(과 색 고르기·플레이어 아트)에만** 쓴다. 목록·시트의 과목 표시는 무채색
+ * 아이콘 타일이 맡는다 — 줄마다 색이 바뀌면 화면이 알록달록해지고 상태 색이 묻힌다.
+ *
+ * 톤은 HCT 기준. 라이트: 칸 T80(채도 최대 44) + 글자 T20(7.7:1) + 보조 T28(5.9:1).
+ * 다크: 칸 T34 + 글자 T92(6.6:1). 예전 T90 컨테이너는 흰 카드 위에서 회색처럼 보여
+ * 시간표가 밋밋했다.
  */
 data class CourseColor(
     val seed: Int,
     @StringRes val label: Int,
-    val container: Int,
-    val onContainer: Int,
-    val containerDark: Int,
-    val onContainerDark: Int,
-    val accentDark: Int,
+    val block: Int,
+    val onBlock: Int,
+    val blockSub: Int,
+    val blockDark: Int,
+    val onBlockDark: Int,
 )
 
 object CourseColors {
 
     val palette: List<CourseColor> = listOf(
-        CourseColor(0xFF636100.toInt(), R.string.color_olive, 0xFFEAE784.toInt(), 0xFF4A4900.toInt(), 0xFF4A4900.toInt(), 0xFFEAE784.toInt(), 0xFFCECB56.toInt()),
-        CourseColor(0xFF1A6C31.toInt(), R.string.color_green, 0xFFB1F2B4.toInt(), 0xFF135224.toInt(), 0xFF135224.toInt(), 0xFFB1F2B4.toInt(), 0xFF88D990.toInt()),
-        CourseColor(0xFF006A64.toInt(), R.string.color_teal, 0xFF90F3EA.toInt(), 0xFF00504B.toInt(), 0xFF00504B.toInt(), 0xFF90F3EA.toInt(), 0xFF50DBD0.toInt()),
-        CourseColor(0xFF006685.toInt(), R.string.color_sky, 0xFFBFE9FF.toInt(), 0xFF004D65.toInt(), 0xFF004D65.toInt(), 0xFFBFE9FF.toInt(), 0xFF6DD2FF.toInt()),
-        CourseColor(0xFF2F5DA8.toInt(), R.string.color_blue, 0xFFD7E2FF.toInt(), 0xFF23467F.toInt(), 0xFF23467F.toInt(), 0xFFD7E2FF.toInt(), 0xFFACC7FF.toInt()),
-        CourseColor(0xFF684FA4.toInt(), R.string.color_violet, 0xFFE9DDFF.toInt(), 0xFF4E3B7C.toInt(), 0xFF4E3B7C.toInt(), 0xFFE9DDFF.toInt(), 0xFFD0BCFF.toInt()),
-        CourseColor(0xFF8E437E.toInt(), R.string.color_pink, 0xFFFFD7F0.toInt(), 0xFF6C325F.toInt(), 0xFF6C325F.toInt(), 0xFFFFD7F0.toInt(), 0xFFFFACE7.toInt()),
-        CourseColor(0xFF5E5E67.toInt(), R.string.color_grey, 0xFFE3E1EC.toInt(), 0xFF46464F.toInt(), 0xFF46464F.toInt(), 0xFFE3E1EC.toInt(), 0xFFC7C5D0.toInt()),
+        color(0xFFAB5034, R.string.color_coral, 0xFFFFB59F, 0xFF581D0A, 0xFF6C301E, 0xFF853921, 0xFFFFE2DA),
+        color(0xFF926000, R.string.color_amber, 0xFFFCBA58, 0xFF452B00, 0xFF5C3B00, 0xFF6F4800, 0xFFFFE4C3),
+        color(0xFF697000, R.string.color_lime, 0xFFC6CD66, 0xFF303300, 0xFF414600, 0xFF4F5400, 0xFFE9ECB4),
+        color(0xFF2A793C, R.string.color_green, 0xFF8FD795, 0xFF003913, 0xFF184C24, 0xFF145C28, 0xFFCFF1CD),
+        color(0xFF007871, R.string.color_teal, 0xFF64D9CF, 0xFF003734, 0xFF004B46, 0xFF005A55, 0xFFC1F2EC),
+        color(0xFF007398, R.string.color_sky, 0xFF77D1FE, 0xFF003548, 0xFF004860, 0xFF005774, 0xFFCEEDFF),
+        color(0xFF4B67B6, R.string.color_indigo, 0xFFB4C5FF, 0xFF142D68, 0xFF2D4073, 0xFF334D91, 0xFFE3E7FF),
+        color(0xFF7B5AAE, R.string.color_violet, 0xFFD6BAFF, 0xFF3C2361, 0xFF4D376E, 0xFF5E418A, 0xFFF1E3FF),
+        color(0xFFA04E84, R.string.color_pink, 0xFFFFAEDE, 0xFF531A42, 0xFF652F53, 0xFF7D3766, 0xFFFFE0EF),
+        color(0xFF6A6A70, R.string.color_grey, 0xFFC6C6CD, 0xFF2F3036, 0xFF414248, 0xFF4F5056, 0xFFE9E7EC),
     )
 
-    val default: CourseColor get() = palette[3]
+    private fun color(seed: Long, @StringRes label: Int, block: Long, on: Long, sub: Long, dark: Long, onDark: Long) =
+        CourseColor(seed.toInt(), label, block.toInt(), on.toInt(), sub.toInt(), dark.toInt(), onDark.toInt())
+
+    val default: CourseColor get() = palette[5]
 
     /**
-     * 예전 팔레트와 기본값으로 저장된 색. 원래 의도와 가장 가까운 새 색으로 옮긴다.
-     * 빨강·주황·갈색은 녹음/확인 필요 색과 겹치므로 가까운 다른 색으로 보낸다.
+     * 예전에 저장된 색을 원래 의도와 가장 가까운 새 색으로 옮긴다.
+     * v1 의 빨강은 녹음 색과 겹치므로 분홍으로 보낸다.
      */
     private val legacy: Map<Int, Int> = mapOf(
-        0xFF2E6C3E.toInt() to 1, // 초록
-        0xFF1B5E20.toInt() to 1, // 예전 Course 기본값(초록)
-        0xFF1565C0.toInt() to 4, // 파랑
-        0xFF6A1B9A.toInt() to 5, // 보라 (예전 보강 색)
-        0xFFC62828.toInt() to 6, // 빨강 → 분홍
-        0xFFEF6C00.toInt() to 0, // 주황 → 올리브
-        0xFF00838F.toInt() to 2, // 청록
-        0xFF4E342E.toInt() to 0, // 갈색 → 올리브
-        0xFF37474F.toInt() to 7, // 청회색 → 회색
+        // v1
+        0xFF2E6C3E.toInt() to 3, // 초록
+        0xFF1B5E20.toInt() to 3, // 예전 Course 기본값(초록)
+        0xFF1565C0.toInt() to 6, // 파랑 → 남색
+        0xFF6A1B9A.toInt() to 7, // 보라 (예전 보강 색)
+        0xFFC62828.toInt() to 8, // 빨강 → 분홍
+        0xFFEF6C00.toInt() to 1, // 주황 → 호박
+        0xFF00838F.toInt() to 4, // 청록
+        0xFF4E342E.toInt() to 1, // 갈색 → 호박
+        0xFF37474F.toInt() to 9, // 청회색 → 회색
+        // v3 (8색)
+        0xFF636100.toInt() to 2, // 올리브 → 라임
+        0xFF1A6C31.toInt() to 3,
+        0xFF006A64.toInt() to 4,
+        0xFF006685.toInt() to 5,
+        0xFF2F5DA8.toInt() to 6, // 파랑 → 남색
+        0xFF684FA4.toInt() to 7,
+        0xFF8E437E.toInt() to 8,
+        0xFF5E5E67.toInt() to 9,
     )
 
     /** 저장된 ARGB 를 팔레트 색으로. 모르는 색은 색조가 가장 가까운 것으로. */
@@ -90,15 +108,21 @@ object CourseColors {
     }
 }
 
-/** 지금 테마에 맞는 (컨테이너, 글자) 색. */
+/** 지금 테마에 맞는 (칸, 글자) 색. */
 @Composable
 @ReadOnlyComposable
 fun CourseColor.tones(): Pair<Color, Color> =
-    if (LocalAppColors.current.isDark) Color(containerDark) to Color(onContainerDark)
-    else Color(container) to Color(onContainer)
+    if (LocalAppColors.current.isDark) Color(blockDark) to Color(onBlockDark)
+    else Color(block) to Color(onBlock)
 
-/** 작은 점·칩 앞 표시용. */
+/** 칸 안의 보조 글자(강의실 등). */
 @Composable
 @ReadOnlyComposable
-fun CourseColor.accent(): Color =
-    if (LocalAppColors.current.isDark) Color(accentDark) else Color(seed)
+fun CourseColor.subTone(): Color =
+    if (LocalAppColors.current.isDark) Color(onBlockDark) else Color(blockSub)
+
+/** 칩 앞의 작은 색 사각형처럼, 칸 색을 그대로 보여 줄 때. */
+@Composable
+@ReadOnlyComposable
+fun CourseColor.swatch(): Color =
+    if (LocalAppColors.current.isDark) Color(blockDark) else Color(block)

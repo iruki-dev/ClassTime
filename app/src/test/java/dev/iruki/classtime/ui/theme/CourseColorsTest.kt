@@ -16,15 +16,22 @@ class CourseColorsTest {
 
     @Test
     fun legacyColors_mapToIntendedNewColors() {
-        val green = CourseColors.palette[1]
-        val blue = CourseColors.palette[4]
-        val violet = CourseColors.palette[5]
-        val grey = CourseColors.palette[7]
+        val green = CourseColors.palette[3]
+        val indigo = CourseColors.palette[6]
+        val violet = CourseColors.palette[7]
+        val grey = CourseColors.palette[9]
         assertThat(CourseColors.of(0xFF2E6C3E.toInt())).isEqualTo(green)
         assertThat(CourseColors.of(0xFF1B5E20.toInt())).isEqualTo(green) // 예전 Course 기본값
-        assertThat(CourseColors.of(0xFF1565C0.toInt())).isEqualTo(blue)
+        assertThat(CourseColors.of(0xFF1565C0.toInt())).isEqualTo(indigo)
         assertThat(CourseColors.of(0xFF6A1B9A.toInt())).isEqualTo(violet) // 예전 보강 색
         assertThat(CourseColors.of(0xFF37474F.toInt())).isEqualTo(grey)
+    }
+
+    @Test
+    fun v3Colors_keepTheirHue() {
+        // v3 하늘(006685)로 저장된 과목은 새 팔레트에서도 하늘이어야 한다.
+        assertThat(CourseColors.of(0xFF006685.toInt())).isEqualTo(CourseColors.palette[5])
+        assertThat(CourseColors.of(0xFF636100.toInt())).isEqualTo(CourseColors.palette[2])
     }
 
     @Test
@@ -37,15 +44,17 @@ class CourseColorsTest {
 
     @Test
     fun unknownColor_snapsToNearestHue_andGreysToGrey() {
-        assertThat(CourseColors.of(0xFF00AAAA.toInt())).isEqualTo(CourseColors.palette[2]) // 청록
+        assertThat(CourseColors.of(0xFF00AAAA.toInt())).isEqualTo(CourseColors.palette[4]) // 청록
         assertThat(CourseColors.of(0xFF808080.toInt())).isEqualTo(CourseColors.palette.last())
     }
 
     @Test
-    fun everyContainerPair_meetsAaaContrast() {
+    fun blockText_isReadable() {
         CourseColors.palette.forEach {
-            assertThat(contrast(it.container, it.onContainer)).isAtLeast(7.0)
-            assertThat(contrast(it.containerDark, it.onContainerDark)).isAtLeast(7.0)
+            // 과목명: 라이트는 AAA, 다크·보조 글자도 AA(4.5:1) 이상.
+            assertThat(contrast(it.block, it.onBlock)).isAtLeast(7.0)
+            assertThat(contrast(it.block, it.blockSub)).isAtLeast(4.5)
+            assertThat(contrast(it.blockDark, it.onBlockDark)).isAtLeast(4.5)
         }
     }
 

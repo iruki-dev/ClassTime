@@ -20,11 +20,13 @@
     <string name="subject_makeup">보강</string>
 
     <!-- ===== 과목 색 ===== -->
-    <string name="color_olive">올리브</string>
+    <string name="color_coral">산호</string>
+    <string name="color_amber">호박</string>
+    <string name="color_lime">라임</string>
     <string name="color_green">초록</string>
     <string name="color_teal">청록</string>
     <string name="color_sky">하늘</string>
-    <string name="color_blue">파랑</string>
+    <string name="color_indigo">남색</string>
     <string name="color_violet">보라</string>
     <string name="color_pink">분홍</string>
     <string name="color_grey">회색</string>
@@ -95,6 +97,7 @@
     <string name="home_subtitle_date">%1$s</string>
     <string name="home_subtitle_week">%1$s · %2$d주차</string>
     <string name="home_cd_settings">설정</string>
+    <string name="home_cd_record">지금 녹음</string>
 
     <string name="home_state_ready">자동 녹음 준비됨</string>
     <string name="home_state_preparing">자동 녹음 준비 중</string>
@@ -125,6 +128,14 @@
     <string name="home_idle_after_term_detail">자동 녹음은 쉬어요. 직접 녹음은 언제든 할 수 있어요.</string>
 
     <string name="home_rec_ends_at">%1$s에 멈춰요 · %2$s 남음</string>
+    <string name="home_rec_ends_at_extended">%1$s에 멈춰요 · %2$d분 연장함</string>
+    <string name="home_rec_extend">수업 연장</string>
+    <string name="extend_title">수업이 늦게 끝나나요?</string>
+    <string name="extend_body">고른 만큼 더 녹음해요. 연장한 뒤에도 정지를 누르면 바로 멈춰요.</string>
+    <string name="extend_option_cd">%1$d분 연장, %2$s까지</string>
+    <string name="extend_unit_hint">분 · 아래는 새로 멈추는 시각</string>
+    <string name="extend_note">알림에서도 5분 연장을 바로 누를 수 있어요. 다음 수업이 시작되면 연장한 녹음은 그 자리에서 끝나요.</string>
+    <string name="extend_done">%1$s까지 녹음해요</string>
     <string name="home_rec_started_at">%1$s 시작</string>
     <string name="home_rec_level_ok">소리가 잘 들어오고 있어요</string>
     <string name="home_rec_level_quiet">조용해요 · 마이크를 가리지 않았는지 확인해 주세요</string>
@@ -153,7 +164,6 @@
     <string name="home_how_3_title">과목 폴더에 정리</string>
     <string name="home_how_3_body">Music › ClassTime › 과목명. USB로 PC에 그대로 옮겨요.</string>
 
-    <string name="home_fab_record">지금 녹음</string>
     <string name="home_fab_stop">정지</string>
 
     <!-- 수동 녹음 시트 -->
@@ -297,6 +307,54 @@
     <string name="player_meta_auto">%1$s · 자동 녹음 · %2$s</string>
     <string name="player_meta_manual">%1$s · 수동 녹음 · %2$s</string>
     <string name="player_mini_meta">%1$s / %2$s · %3$s</string>
+
+    <!-- ===== 과목 아이콘 ===== -->
+    <string name="course_icon_cd">아이콘 바꾸기</string>
+    <string name="course_icon_title">아이콘</string>
+    <string name="course_icon_auto">이름으로 다시 고르기</string>
+    <string name="course_icon_hint">‘%1$s’에 어울리는 아이콘을 골라 뒀어요. 누르면 바로 바뀌어요.</string>
+    <string name="course_icon_hint_blank">과목명을 쓰면 어울리는 아이콘을 골라 드려요.</string>
+    <string name="icon_book">책</string>
+    <string name="icon_school">학교</string>
+    <string name="icon_lightbulb">전구</string>
+    <string name="icon_functions">수식</string>
+    <string name="icon_calculate">계산기</string>
+    <string name="icon_stats">통계</string>
+    <string name="icon_code">코드</string>
+    <string name="icon_computer">컴퓨터</string>
+    <string name="icon_memory">칩</string>
+    <string name="icon_science">과학</string>
+    <string name="icon_biotech">생명</string>
+    <string name="icon_eco">환경</string>
+    <string name="icon_medical">의학</string>
+    <string name="icon_psychology">심리</string>
+    <string name="icon_translate">언어</string>
+    <string name="icon_history">역사</string>
+    <string name="icon_forum">토론</string>
+    <string name="icon_public">지구</string>
+    <string name="icon_gavel">법</string>
+    <string name="icon_bank">사회</string>
+    <string name="icon_business">경영</string>
+    <string name="icon_engineering">공학</string>
+    <string name="icon_architecture">건축</string>
+    <string name="icon_rocket">로켓</string>
+    <string name="icon_palette">미술</string>
+    <string name="icon_draw">디자인</string>
+    <string name="icon_camera">사진</string>
+    <string name="icon_theater">공연</string>
+    <string name="icon_music">음악</string>
+    <string name="icon_sports">체육</string>
+
+    <!-- ===== 시각 고르기 ===== -->
+    <string name="time_am">오전</string>
+    <string name="time_pm">오후</string>
+    <string name="time_hour">시</string>
+    <string name="time_minute">분</string>
+    <string name="time_hour_cd">%1$d시</string>
+    <string name="time_minute_cd">%1$d분</string>
+    <string name="time_pick_keyboard">직접 입력</string>
+    <string name="time_pick_grid">칸으로 고르기</string>
+    <string name="time_pick_odd_minute">5분 단위가 아닌 시각이에요. 그대로 두거나 칸을 눌러 바꿔요.</string>
 
     <!-- ===== 위젯 ===== -->
     <string name="widget_name">오늘 수업</string>

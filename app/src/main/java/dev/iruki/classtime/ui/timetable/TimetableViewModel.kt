@@ -29,6 +29,7 @@ data class CourseGroup(
     val room: String,
     val autoRecord: Boolean,
     val colorArgb: Int,
+    val icon: String,
     val slots: List<Slot>,
 )
 
@@ -94,6 +95,7 @@ class TimetableViewModel @Inject constructor(
         room: String,
         autoRecord: Boolean,
         colorArgb: Int,
+        icon: String,
         slots: List<Slot>,
     ) = viewModelScope.launch(Dispatchers.IO) {
         val gid = groupId ?: UUID.randomUUID().toString()
@@ -115,6 +117,7 @@ class TimetableViewModel @Inject constructor(
                     endMinute = slot.endMinute,
                     autoRecord = autoRecord,
                     colorArgb = colorArgb,
+                    icon = icon,
                 )
             )
         }
@@ -136,6 +139,7 @@ class TimetableViewModel @Inject constructor(
             room = first.room,
             autoRecord = first.autoRecord,
             colorArgb = first.colorArgb,
+            icon = first.icon,
             slots = sortedWith(compareBy({ it.dayOfWeek }, { it.startMinute }))
                 .map { Slot(it.dayOfWeek, it.startMinute, it.endMinute) },
         )

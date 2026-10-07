@@ -31,7 +31,7 @@ import kotlinx.coroutines.launch
 enum class TermPhase { BEFORE, DURING, AFTER, NONE }
 
 /** 수동 녹음 시트에서 고를 수 있는 과목. */
-data class SubjectOption(val subject: String, val colorArgb: Int)
+data class SubjectOption(val subject: String, val icon: String)
 
 @HiltViewModel
 class HomeViewModel @Inject constructor(
@@ -79,7 +79,7 @@ class HomeViewModel @Inject constructor(
     val subjects: StateFlow<List<SubjectOption>> = repo.courses
         .map { list ->
             list.distinctBy { it.groupId }
-                .map { SubjectOption(it.subject, it.colorArgb) }
+                .map { SubjectOption(it.subject, it.icon) }
                 .distinctBy { it.subject }
                 .sortedBy { it.subject }
         }

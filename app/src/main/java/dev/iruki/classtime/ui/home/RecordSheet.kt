@@ -16,7 +16,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Edit
-import androidx.compose.material.icons.rounded.RadioButtonChecked
+import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -40,13 +40,14 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import dev.iruki.classtime.R
-import dev.iruki.classtime.ui.common.CourseAvatar
+import dev.iruki.classtime.ui.common.CourseIconTile
+import dev.iruki.classtime.ui.common.tileContainer
 import dev.iruki.classtime.ui.common.GroupGap
 import dev.iruki.classtime.ui.common.GroupRow
 import dev.iruki.classtime.ui.common.IconTile
 import dev.iruki.classtime.ui.common.RowHeadline
 import dev.iruki.classtime.ui.theme.AppTheme
-import dev.iruki.classtime.ui.theme.CourseColors
+import dev.iruki.classtime.ui.theme.CourseIcons
 import dev.iruki.classtime.ui.theme.GroupShapes
 
 /**
@@ -98,7 +99,12 @@ fun RecordSheet(
                         index = i, count = count,
                         selected = selected == i,
                         onSelect = { selected = i },
-                        leading = { CourseAvatar(CourseColors.of(option.colorArgb), option.subject) },
+                        leading = {
+                            CourseIconTile(
+                                CourseIcons.of(option.icon, option.subject),
+                                container = if (selected == i) AppTheme.colors.group else tileContainer(),
+                            )
+                        },
                         label = option.subject,
                     )
                 }
@@ -109,7 +115,7 @@ fun RecordSheet(
                     leading = {
                         IconTile(
                             Icons.Rounded.Edit,
-                            MaterialTheme.colorScheme.surfaceContainerHighest,
+                            if (selected == customIndex) AppTheme.colors.group else tileContainer(),
                             MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     },
@@ -133,7 +139,7 @@ fun RecordSheet(
                 enabled = chosenName != null,
                 modifier = Modifier.fillMaxWidth().height(56.dp),
             ) {
-                Icon(Icons.Rounded.RadioButtonChecked, contentDescription = null)
+                Icon(Icons.Rounded.Mic, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
                 Text(
                     if (chosenName != null) stringResource(R.string.record_sheet_start, chosenName)
