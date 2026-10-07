@@ -13,6 +13,10 @@ import dev.iruki.classtime.audio.PlaybackState
 import dev.iruki.classtime.audio.RecordingStorage
 import dev.iruki.classtime.data.ClassTimeRepository
 import dev.iruki.classtime.data.Recording
+import dev.iruki.classtime.data.Transcript
+import dev.iruki.classtime.ai.AiConfig
+import dev.iruki.classtime.ai.AiSettings
+import dev.iruki.classtime.ai.TranscriptionQueue
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -29,7 +33,18 @@ class RecordingsViewModel @Inject constructor(
     private val repo: ClassTimeRepository,
     private val storage: RecordingStorage,
     private val player: PlaybackController,
+    private val transcription: TranscriptionQueue,
+    aiSettings: AiSettings,
 ) : ViewModel() {
+
+    /** 실험적 기능: 녹음 id → 텍스트 변환 상태. 기능을 쓰지 않으면 비어 있다. */
+    val transcripts: StateFlow<Map<Long, Transcript>> = transcription.observeAll()
+        .map { list -> list.associateBy { it.recordingId } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
+
+    val ai: StateFlow<AiConfig> = aiSettings.config
+
+    fun convert(recording: Recording) = viewModelScope.launch { transcription.enqueue(recording.id) }
 
     /** 과목별로 묶은 목록. 최신 녹음이 있는 과목이 위로. */
     val grouped: StateFlow<List<Pair<String, List<Recording>>>> = repo.recordings
@@ -70,6 +85,7 @@ class RecordingsViewModel @Inject constructor(
     fun delete(recording: Recording) = viewModelScope.launch(Dispatchers.IO) {
         kotlinx.coroutines.withContext(Dispatchers.Main) { player.releaseIfPlaying(recording.id) }
         storage.delete(Uri.parse(recording.uri))
+        transcription.remove(recording.id)
         repo.deleteRecording(recording)
     }
 

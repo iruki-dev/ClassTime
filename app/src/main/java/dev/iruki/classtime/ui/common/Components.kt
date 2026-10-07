@@ -228,11 +228,17 @@ fun IconTile(icon: ImageVector, container: Color, content: Color, size: Dp = 40.
 
 /** 켜짐에 체크 아이콘을 넣은 M3 스위치. */
 @Composable
-fun AppSwitch(checked: Boolean, onCheckedChange: (Boolean) -> Unit, modifier: Modifier = Modifier) {
+fun AppSwitch(
+    checked: Boolean,
+    onCheckedChange: ((Boolean) -> Unit)?,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
     Switch(
         checked = checked,
         onCheckedChange = onCheckedChange,
         modifier = modifier,
+        enabled = enabled,
         thumbContent = if (checked) {
             { Icon(Icons.Rounded.Check, contentDescription = null, modifier = Modifier.size(SwitchDefaults.IconSize)) }
         } else null,

@@ -248,7 +248,11 @@ class TranscriptionEngine(
         val correcting = latest.stateEnum == TranscriptState.CORRECTING
         AppLog.w(TAG, "AI 호출 실패 id=${job.recordingId} ${e.kind} ${e.message}")
         when (e.kind) {
-            AiException.Kind.NETWORK -> return Outcome.Offline
+            AiException.Kind.NETWORK -> {
+                // 화면이 ‘연결되면 이어서’를 보여 줄 수 있게 남긴다. 다음 걸음이 성공하면 지워진다.
+                save(latest.copy(error = TranscriptError.NETWORK.name))
+                return Outcome.Offline
+            }
             AiException.Kind.AUTH -> {
                 settings.markRejected(groq = !correcting)
                 if (correcting) {

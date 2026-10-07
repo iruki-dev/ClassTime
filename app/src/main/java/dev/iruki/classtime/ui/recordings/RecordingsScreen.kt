@@ -64,6 +64,12 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.iruki.classtime.R
 import dev.iruki.classtime.data.Recording
+import dev.iruki.classtime.data.Transcript
+import dev.iruki.classtime.data.TranscriptState
+import dev.iruki.classtime.ui.ai.TranscriptBadge
+import androidx.compose.material.icons.automirrored.rounded.Notes
+import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material3.HorizontalDivider
 import dev.iruki.classtime.ui.common.CourseIconTile
 import dev.iruki.classtime.ui.common.GroupGap
 import dev.iruki.classtime.ui.common.GroupRow
@@ -80,13 +86,15 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 @Composable
-fun RecordingsScreen(onOpenPlayer: () -> Unit) {
+fun RecordingsScreen(onOpenPlayer: () -> Unit, onOpenText: (Long) -> Unit) {
     val vm: RecordingsViewModel = hiltViewModel()
     val groups by vm.grouped.collectAsStateWithLifecycle()
     val playback by vm.playback.collectAsStateWithLifecycle()
     val recordingActive by vm.recordingActive.collectAsStateWithLifecycle()
     val filter by vm.filter.collectAsStateWithLifecycle()
     val icons by vm.subjectIcons.collectAsStateWithLifecycle()
+    val transcripts by vm.transcripts.collectAsStateWithLifecycle()
+    val ai by vm.ai.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     var renaming by remember { mutableStateOf<Recording?>(null) }
@@ -166,6 +174,10 @@ fun RecordingsScreen(onOpenPlayer: () -> Unit) {
                             onShare = { vm.share(recording) },
                             onRename = { renaming = recording },
                             onDelete = { deleting = recording },
+                            transcript = transcripts[recording.id],
+                            canConvert = ai.enabled && !recording.isSilent,
+                            onConvert = { vm.convert(recording) },
+                            onOpenText = { onOpenText(recording.id) },
                         )
                     }
                 }
@@ -296,6 +308,10 @@ private fun RecordingRow(
     onShare: () -> Unit,
     onRename: () -> Unit,
     onDelete: () -> Unit,
+    transcript: Transcript?,
+    canConvert: Boolean,
+    onConvert: () -> Unit,
+    onOpenText: () -> Unit,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     val c = MaterialTheme.colorScheme
@@ -341,7 +357,10 @@ private fun RecordingRow(
                     Text(stringResource(R.string.recordings_silent_warning), style = MaterialTheme.typography.bodyMedium, color = c.error)
                 }
             }
-            Text(meta, style = MaterialTheme.typography.bodyMedium, color = c.onSurfaceVariant)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(meta, style = MaterialTheme.typography.bodyMedium, color = c.onSurfaceVariant)
+                TranscriptBadge(transcript)
+            }
         },
         trailing = {
             Box {
@@ -349,6 +368,23 @@ private fun RecordingRow(
                     Icon(Icons.Rounded.MoreVert, contentDescription = stringResource(R.string.action_more))
                 }
                 DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    // 실험적 기능: 텍스트가 있거나 진행 중이면 ‘텍스트 보기’, 없으면 ‘텍스트로 변환’.
+                    val hasText = transcript != null && transcript.stateEnum != TranscriptState.FAILED
+                    if (hasText) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.ai_menu_view_text)) },
+                            leadingIcon = { Icon(Icons.AutoMirrored.Rounded.Notes, contentDescription = null) },
+                            onClick = { menuOpen = false; onOpenText() },
+                        )
+                        HorizontalDivider()
+                    } else if (canConvert && !liveNow) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.ai_text_convert)) },
+                            leadingIcon = { Icon(Icons.Rounded.AutoAwesome, contentDescription = null) },
+                            onClick = { menuOpen = false; onConvert() },
+                        )
+                        HorizontalDivider()
+                    }
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.recordings_menu_share)) },
                         onClick = { menuOpen = false; onShare() },
