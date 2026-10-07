@@ -100,6 +100,10 @@ class RecordingService : Service() {
         val subject: String,
         val startedAt: Long,
         val auto: Boolean,
+        /** 끝날 시각(epoch ms). 시간표상 끝 + 연장. 수동 녹음처럼 모르면 0. */
+        val plannedEndAt: Long,
+        /** 지금까지 연장한 분. 0 보다 크면 시간표의 종료 알람을 무시한다. */
+        val extendedMinutes: Int = 0,
     )
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -120,6 +124,13 @@ class RecordingService : Service() {
                 if (session == null) leaveForegroundAndStop()
             }
 
+            ACTION_EXTEND -> {
+                val minutes = intent.getIntExtra(EXTRA_MINUTES, 0)
+                serviceScope.launch { extend(minutes) }
+            }
+
+            ACTION_STOP_SCHEDULED -> serviceScope.launch { onScheduledStop() }
+
             ACTION_START_AUTO, ACTION_START_MAKEUP, ACTION_START_MANUAL -> {
                 // 수동 시작은 사용자가 앱에서 누른 것이므로 앱이 화면에 있다.
                 enterForeground(
@@ -131,7 +142,16 @@ class RecordingService : Service() {
                     ACTION_START_MAKEUP -> Spec.Makeup(intent.getLongExtra(EXTRA_EXCEPTION_ID, -1L))
                     else -> Spec.Manual(intent.getStringExtra(EXTRA_SUBJECT))
                 }
-                serviceScope.launch { startSession(spec) }
+                serviceScope.launch {
+                    // 연장 중인 수업이 다음 수업 시작과 겹치면 다음 수업이 우선이다.
+                    // 그대로 두면 ‘이미 녹음 중’으로 다음 수업 녹음이 통째로 빠진다.
+                    if (spec !is Spec.Manual && session?.extendedMinutes?.let { it > 0 } == true) {
+                        AppLog.i(TAG, "연장 중에 다음 수업이 시작돼 연장 녹음을 마무리합니다")
+                        RecordingWatchdogReceiver.disarm(this@RecordingService)
+                        withContext(NonCancellable) { finalizeSession("next-class") }
+                    }
+                    startSession(spec)
+                }
             }
 
             ACTION_STOP -> finalizeAndSettle("stop-intent")
@@ -281,24 +301,18 @@ class RecordingService : Service() {
                 ongoing = true,
             )
         )
-        session = ActiveSession(
+        val s = ActiveSession(
             rowId = rowId,
             uri = target.uri,
             legacyPath = target.legacyFile?.absolutePath,
             subject = r.subject,
             startedAt = startedAt,
             auto = r.auto,
+            plannedEndAt = plannedEndAt(startedAt, r.plannedEndMinute),
         )
+        session = s
 
-        repo.updateStatus(
-            RecordingStatus(
-                active = true,
-                subject = r.subject,
-                auto = r.auto,
-                startedAt = startedAt,
-                plannedEndAt = plannedEndAt(startedAt, r.plannedEndMinute),
-            )
-        )
+        publishStatus(s)
         armWatchdog(startedAt, r.plannedEndMinute)
         updateNotification(getString(R.string.notif_recording_subject, r.subject))
 
@@ -308,7 +322,53 @@ class RecordingService : Service() {
         AppLog.i(TAG, "녹음 시작: ${r.subject} (auto=${r.auto}, micReady=$micReady)")
     }
 
-    /** 워치독 알람: 계획된 종료 시각 + 유예, 그리고 절대 상한 중 이른 쪽. */
+    private fun publishStatus(s: ActiveSession) = repo.updateStatus(
+        RecordingStatus(
+            active = true,
+            subject = s.subject,
+            auto = s.auto,
+            startedAt = s.startedAt,
+            plannedEndAt = s.plannedEndAt,
+            extendedMinutes = s.extendedMinutes,
+        )
+    )
+
+    // --- 연장 ---
+
+    /**
+     * 수업이 늦게 끝날 것 같을 때 녹음 끝 시각을 [minutes] 분 미룬다. 여러 번 누르면 쌓인다.
+     *
+     * 연장하면 시간표의 종료 알람([ACTION_STOP_SCHEDULED])은 무시하고, 워치독을 새 끝 시각에
+     * **정확히** 맞춰 그것이 녹음을 끝내게 한다. 연장 중에도 [ACTION_STOP] 으로 언제든 멈출 수 있다.
+     */
+    private suspend fun extend(minutes: Int) = stateLock.withLock {
+        val s = session ?: return@withLock
+        if (minutes <= 0 || s.plannedEndAt <= 0L) {
+            AppLog.w(TAG, "끝 시각을 모르는 녹음은 연장할 수 없습니다 (minutes=$minutes)")
+            return@withLock
+        }
+        val now = System.currentTimeMillis()
+        val base = maxOf(s.plannedEndAt, now)
+        val capAt = s.startedAt + MAX_RECORDING_MS
+        val newEnd = minOf(base + minutes * 60_000L, capAt)
+        val extended = s.copy(plannedEndAt = newEnd, extendedMinutes = s.extendedMinutes + minutes)
+        session = extended
+        RecordingWatchdogReceiver.arm(this, newEnd)
+        publishStatus(extended)
+        updateNotification(getString(R.string.notif_recording_subject, s.subject))
+        AppLog.i(TAG, "녹음 연장 +${minutes}분 (총 ${extended.extendedMinutes}분)")
+    }
+
+    /** 시간표의 종료 알람. 연장 중이면 무시하고 워치독이 끝내게 둔다. */
+    private suspend fun onScheduledStop() {
+        val s = stateLock.withLock { session }
+        if (s != null && s.extendedMinutes > 0 && s.plannedEndAt > System.currentTimeMillis()) {
+            AppLog.i(TAG, "연장 중이라 시간표 종료 알람을 무시합니다")
+            return
+        }
+        withContext(Dispatchers.Main) { finalizeAndSettle("scheduled-stop") }
+    }
+
     /** 오늘 [plannedEndMinute] 시각. 이미 지났거나 없으면 0(화면은 ‘끝 시각 모름’으로 표시). */
     private fun plannedEndAt(startedAt: Long, plannedEndMinute: Int?): Long =
         plannedEndMinute
@@ -426,6 +486,17 @@ class RecordingService : Service() {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )
             builder.addAction(0, getString(R.string.notif_stop), stop)
+            val endAt = session?.plannedEndAt ?: 0L
+            if (endAt > 0L) {
+                builder.setSubText(getString(R.string.notif_until, TimeUtils.clockText(endAt)))
+                val extend = PendingIntent.getService(
+                    this, 3, extendIntent(this, NOTIFICATION_EXTEND_MINUTES),
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                )
+                builder.addAction(
+                    0, getString(R.string.notif_extend, NOTIFICATION_EXTEND_MINUTES), extend,
+                )
+            }
         }
         return builder.build()
     }
@@ -491,6 +562,15 @@ class RecordingService : Service() {
         const val ACTION_START_STANDBY = "dev.iruki.classtime.service.START_STANDBY"
         const val ACTION_STOP_STANDBY = "dev.iruki.classtime.service.STOP_STANDBY"
         const val ACTION_STOP = "dev.iruki.classtime.service.STOP"
+        const val ACTION_STOP_SCHEDULED = "dev.iruki.classtime.service.STOP_SCHEDULED"
+        const val ACTION_EXTEND = "dev.iruki.classtime.service.EXTEND"
+        const val EXTRA_MINUTES = "minutes"
+
+        /** 연장할 수 있는 길이(분). 화면의 칩과 같은 목록. */
+        val EXTEND_CHOICES = listOf(1, 2, 3, 5, 10)
+
+        /** 알림의 연장 버튼 한 번에 늘어나는 분. */
+        private const val NOTIFICATION_EXTEND_MINUTES = 5
         const val EXTRA_COURSE_ID = "course_id"
         const val EXTRA_EXCEPTION_ID = "exception_id"
         const val EXTRA_SUBJECT = "subject"
@@ -534,6 +614,26 @@ class RecordingService : Service() {
             })
 
         fun stop(context: Context) = send(context, stopIntent(context))
+
+        /** 위젯 버튼용. 위젯을 눌러 시작한 서비스는 백그라운드에서도 마이크를 쓸 수 있다. */
+        fun manualIntent(context: Context): Intent =
+            Intent(context, RecordingService::class.java).apply { action = ACTION_START_MANUAL }
+
+        fun stopIntentForWidget(context: Context): Intent = stopIntent(context)
+
+        /** 시간표의 종료 알람이 보낸다. 사용자가 연장했다면 무시된다. */
+        fun stopScheduled(context: Context) =
+            send(context, Intent(context, RecordingService::class.java).apply {
+                action = ACTION_STOP_SCHEDULED
+            })
+
+        fun extend(context: Context, minutes: Int) = send(context, extendIntent(context, minutes))
+
+        private fun extendIntent(context: Context, minutes: Int) =
+            Intent(context, RecordingService::class.java).apply {
+                action = ACTION_EXTEND
+                putExtra(EXTRA_MINUTES, minutes)
+            }
 
         private fun stopIntent(context: Context) =
             Intent(context, RecordingService::class.java).apply { action = ACTION_STOP }

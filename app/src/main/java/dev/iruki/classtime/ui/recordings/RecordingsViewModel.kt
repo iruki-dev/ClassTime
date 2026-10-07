@@ -2,20 +2,21 @@ package dev.iruki.classtime.ui.recordings
 
 import android.content.Context
 import android.content.Intent
-import android.media.MediaPlayer
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dev.iruki.classtime.R
+import dev.iruki.classtime.audio.PlaybackController
+import dev.iruki.classtime.audio.PlaybackState
 import dev.iruki.classtime.audio.RecordingStorage
+import dev.iruki.classtime.data.CompressionState
+import dev.iruki.classtime.data.LibraryMaintenance
 import dev.iruki.classtime.data.ClassTimeRepository
 import dev.iruki.classtime.data.Recording
-import dev.iruki.classtime.util.AppLog
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -24,23 +25,14 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-/** 재생 상태. [recordingId] 가 -1 이면 정지 상태. */
-data class PlaybackState(
-    val recordingId: Long = -1L,
-    val playing: Boolean = false,
-    val positionMs: Int = 0,
-    val durationMs: Int = 0,
-    /** 재생 속도. 복습할 때 1.5배속이 흔하다. */
-    val speed: Float = 1f,
-)
-
 @HiltViewModel
 class RecordingsViewModel @Inject constructor(
     @ApplicationContext private val app: Context,
     private val repo: ClassTimeRepository,
     private val storage: RecordingStorage,
+    private val player: PlaybackController,
+    private val maintenance: LibraryMaintenance,
 ) : ViewModel() {
-    private var player: MediaPlayer? = null
 
     /** 과목별로 묶은 목록. 최신 녹음이 있는 과목이 위로. */
     val grouped: StateFlow<List<Pair<String, List<Recording>>>> = repo.recordings
@@ -52,142 +44,45 @@ class RecordingsViewModel @Inject constructor(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    /** 과목명 → 과목 색(ARGB). 시간표에서 지운 과목은 없을 수 있다. */
-    val subjectColors: StateFlow<Map<String, Int>> = repo.courses
-        .map { list -> list.associate { it.subject to it.colorArgb } }
+    /** 과목명 → 아이콘 키. 시간표에서 지운 과목은 없을 수 있다(그때는 이름으로 짐작). */
+    val subjectIcons: StateFlow<Map<String, String>> = repo.courses
+        .map { list -> list.associate { it.subject to it.icon } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
-    /** 과목 칩으로 거르기. null 이면 전체. */
-    private val _filter = MutableStateFlow<String?>(null)
+    /** 과목 칩으로 거르기. 여러 개를 고를 수 있고, 비어 있으면 전체. */
+    private val _filter = MutableStateFlow<Set<String>>(emptySet())
     val filter = _filter.asStateFlow()
 
-    fun setFilter(subject: String?) {
-        _filter.value = subject
+    fun toggleFilter(subject: String) {
+        _filter.value = _filter.value.let { if (subject in it) it - subject else it + subject }
     }
 
-    private val _playback = MutableStateFlow(PlaybackState())
-    val playback = _playback.asStateFlow()
+    fun clearFilter() {
+        _filter.value = emptySet()
+    }
+
+    val playback: StateFlow<PlaybackState> = player.state
+
+    val compression: StateFlow<CompressionState> = maintenance.compression
 
     /** 지금 실제로 녹음이 진행 중인지. false 면 'ongoing' 으로 남은 행은 재생 가능한 완료본으로 취급. */
     val recordingActive: StateFlow<Boolean> = repo.status
         .map { it.active }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
-    init {
-        viewModelScope.launch {
-            while (true) {
-                val p = player
-                if (p != null && _playback.value.playing) {
-                    _playback.value = _playback.value.copy(
-                        positionMs = runCatching { p.currentPosition }.getOrDefault(0)
-                    )
-                }
-                delay(500)
-            }
-        }
-    }
+    fun toggle(recording: Recording) = player.toggle(recording)
+    fun seekTo(ms: Int) = player.seekTo(ms)
+    fun seekBy(deltaMs: Int) = player.seekBy(deltaMs)
+    fun setSpeed(speed: Float) = player.setSpeed(speed)
+    fun stopPlayback() = player.stop()
 
-    fun toggle(recording: Recording) {
-        val current = _playback.value
-        if (current.recordingId == recording.id) {
-            val p = player ?: return
-            if (current.playing) {
-                p.pause()
-                _playback.value = current.copy(playing = false)
-            } else {
-                p.start()
-                if (current.speed != 1f) applySpeed(p, current.speed)
-                _playback.value = current.copy(playing = true)
-            }
-            return
-        }
-        viewModelScope.launch {
-            // 마무리가 덜 된(pending) 파일이면 먼저 확정해서 재생 가능하게 만든다.
-            val ready = if (recording.ongoing || recording.sizeBytes == 0L) {
-                repo.forceFinalize(recording)
-            } else {
-                recording
-            }
-            if (!tryPlay(ready)) {
-                // 그래도 실패하면 한 번 더 강제 확정 후 재시도
-                val fixed = repo.forceFinalize(ready)
-                tryPlay(fixed)
-            }
-        }
-    }
+    /** 이 녹음 하나를 압축한다. 진행 상황은 [compression]. */
+    fun compress(recording: Recording) = maintenance.compress(listOf(recording))
 
-    private fun tryPlay(recording: Recording): Boolean {
-        val speed = _playback.value.speed
-        release()
-        return try {
-            val p = MediaPlayer().apply {
-                setDataSource(app, Uri.parse(recording.uri))
-                setOnCompletionListener { stopPlayback() }
-                prepare()
-                start()
-            }
-            player = p
-            if (speed != 1f) applySpeed(p, speed)
-            _playback.value = PlaybackState(
-                recordingId = recording.id,
-                playing = true,
-                positionMs = 0,
-                durationMs = p.duration,
-                speed = speed,
-            )
-            true
-        } catch (e: Exception) {
-            AppLog.e(TAG, "재생 실패: recordingId=${recording.id}", e)
-            _playback.value = PlaybackState()
-            false
-        }
-    }
-
-    /** 지금 위치에서 [deltaMs] 만큼 앞/뒤로. */
-    fun seekBy(deltaMs: Int) {
-        val p = _playback.value
-        if (p.recordingId < 0) return
-        seekTo((p.positionMs + deltaMs).coerceIn(0, p.durationMs.coerceAtLeast(0)))
-    }
-
-    fun setSpeed(speed: Float) {
-        val p = player
-        val state = _playback.value
-        // 일시정지 중에 속도를 바꾸면 일부 기기에서 재생이 시작돼 버린다. 재생 중일 때만 바로 적용하고,
-        // 아니면 다음 재생 때 적용한다.
-        if (p != null && state.playing) applySpeed(p, speed)
-        _playback.value = state.copy(speed = speed)
-    }
-
-    private fun applySpeed(p: MediaPlayer, speed: Float) {
-        runCatching { p.playbackParams = p.playbackParams.setSpeed(speed) }
-            .onFailure { AppLog.w(TAG, "재생 속도 변경 실패", it) }
-    }
-
-    fun seekTo(ms: Int) {
-        player?.let {
-            runCatching { it.seekTo(ms) }
-            _playback.value = _playback.value.copy(positionMs = ms)
-        }
-    }
-
-    fun stopPlayback() {
-        release()
-        _playback.value = PlaybackState(speed = _playback.value.speed)
-    }
-
-    private fun release() {
-        player?.let { runCatching { it.release() } }
-        player = null
-    }
-
-    override fun onCleared() {
-        release()
-        super.onCleared()
-    }
+    fun dismissCompressionResult() = maintenance.dismissCompressionResult()
 
     fun delete(recording: Recording) = viewModelScope.launch(Dispatchers.IO) {
-        if (_playback.value.recordingId == recording.id) stopPlayback()
+        kotlinx.coroutines.withContext(Dispatchers.Main) { player.releaseIfPlaying(recording.id) }
         storage.delete(Uri.parse(recording.uri))
         repo.deleteRecording(recording)
     }
@@ -231,7 +126,4 @@ class RecordingsViewModel @Inject constructor(
         )
     }
 
-    companion object {
-        private const val TAG = "RecordingsViewModel"
-    }
 }

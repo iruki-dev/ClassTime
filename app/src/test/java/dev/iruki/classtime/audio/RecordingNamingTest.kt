@@ -28,4 +28,25 @@ class RecordingNamingTest {
         val name = RecordingStorage.displayName("자료구조", "2026-03-04_0930")
         assertThat(name).isEqualTo("자료구조_2026-03-04_0930.m4a")
     }
+
+    @Test
+    fun parse_readsBackWhatDisplayNameWrites() {
+        val name = RecordingStorage.displayName("자료구조", "2026-03-04_0930")
+        val (subject, at) = RecordingStorage.parseDisplayName(name)!!
+        assertThat(subject).isEqualTo("자료구조")
+        assertThat(at).isEqualTo(java.time.LocalDateTime.of(2026, 3, 4, 9, 30))
+    }
+
+    @Test
+    fun parse_handlesUnderscoresInSubject_andMediaStoreDuplicateSuffix() {
+        val (subject, at) = RecordingStorage.parseDisplayName("C_언어_2026-10-07_1300 (1).m4a")!!
+        assertThat(subject).isEqualTo("C_언어")
+        assertThat(at.hour).isEqualTo(13)
+    }
+
+    @Test
+    fun parse_rejectsRenamedOrInvalidNames() {
+        assertThat(RecordingStorage.parseDisplayName("중간고사 범위 설명.m4a")).isNull()
+        assertThat(RecordingStorage.parseDisplayName("자료구조_2026-13-40_9999.m4a")).isNull()
+    }
 }

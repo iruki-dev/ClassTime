@@ -8,7 +8,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [Course::class, Recording::class, Term::class, ScheduleException::class],
-    version = 3,
+    version = 4,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -70,5 +70,21 @@ abstract class AppDatabase : RoomDatabase() {
                 MIGRATION_2_3_SQL.forEach(db::execSQL)
             }
         }
+
+        /**
+         * v3 -> v4: 과목 아이콘(빈 값 = 과목명으로 짐작)과 녹음 압축 여부를 추가한다.
+         */
+        internal val MIGRATION_3_4_SQL: List<String> = listOf(
+            "ALTER TABLE `courses` ADD COLUMN `icon` TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE `recordings` ADD COLUMN `compressed` INTEGER NOT NULL DEFAULT 0",
+        )
+
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_3_4_SQL.forEach(db::execSQL)
+            }
+        }
+
+        val ALL_MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
     }
 }

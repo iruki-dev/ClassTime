@@ -1,5 +1,7 @@
 package dev.iruki.classtime.ui.recordings
 
+import dev.iruki.classtime.audio.PlaybackState
+
 import android.text.format.DateFormat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -85,7 +87,6 @@ fun RecordingsScreen() {
     val groups by vm.grouped.collectAsStateWithLifecycle()
     val playback by vm.playback.collectAsStateWithLifecycle()
     val recordingActive by vm.recordingActive.collectAsStateWithLifecycle()
-    val subjectColors by vm.subjectColors.collectAsStateWithLifecycle()
     val filter by vm.filter.collectAsStateWithLifecycle()
 
     var renaming by remember { mutableStateOf<Recording?>(null) }
@@ -93,10 +94,10 @@ fun RecordingsScreen() {
     var showStorage by remember { mutableStateOf(false) }
     var playerOpen by remember { mutableStateOf(false) }
 
-    val colorOf = { subject: String -> CourseColors.of(subjectColors[subject] ?: CourseColors.palette.last().seed) }
+    val colorOf = { _: String -> CourseColors.palette.last() }
     val all = groups.flatMap { it.second }
     val current = all.firstOrNull { it.id == playback.recordingId }
-    val visible = if (filter == null) groups else groups.filter { it.first == filter }
+    val visible = if (filter.isEmpty()) groups else groups.filter { it.first in filter }
 
     Scaffold(
         containerColor = AppTheme.colors.page,
@@ -132,11 +133,11 @@ fun RecordingsScreen() {
                             modifier = Modifier.padding(bottom = 8.dp),
                         ) {
                             item {
-                                SubjectChip(stringResource(R.string.recordings_filter_all), filter == null, null) { vm.setFilter(null) }
+                                SubjectChip(stringResource(R.string.recordings_filter_all), filter.isEmpty(), null) { vm.clearFilter() }
                             }
                             items(groups, key = { it.first }) { (subject, _) ->
-                                SubjectChip(subject, filter == subject, colorOf(subject)) {
-                                    vm.setFilter(if (filter == subject) null else subject)
+                                SubjectChip(subject, subject in filter, colorOf(subject)) {
+                                    vm.toggleFilter(subject)
                                 }
                             }
                         }

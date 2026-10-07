@@ -129,6 +129,9 @@ class HomeViewModel @Inject constructor(
 
     fun stop() = RecordingService.stop(app)
 
+    /** 수업이 늦게 끝날 것 같을 때 녹음 끝을 [minutes] 분 미룬다. */
+    fun extend(minutes: Int) = RecordingService.extend(app, minutes)
+
     private fun phaseOf(term: Term?, today: LocalDate): TermPhase {
         if (term == null || (term.startDate == null && term.endDate == null)) return TermPhase.NONE
         return when {

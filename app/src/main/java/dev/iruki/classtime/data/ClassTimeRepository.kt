@@ -135,6 +135,7 @@ class ClassTimeRepository @Inject constructor(
 
     // --- Recording ---
     suspend fun ongoingRecording(): Recording? = recordingDao.getOngoing()
+    suspend fun allRecordings(): List<Recording> = recordingDao.getAll()
     suspend fun recording(id: Long): Recording? = recordingDao.getById(id)
     suspend fun insertRecording(recording: Recording): Long = recordingDao.insert(recording)
     suspend fun updateRecording(recording: Recording) = recordingDao.update(recording)
@@ -214,8 +215,10 @@ data class RecordingStatus(
     val subject: String = "",
     val auto: Boolean = false,
     val startedAt: Long = 0L,
-    /** 시간표상 끝나는 시각(epoch ms). 수동 녹음이거나 모르면 0. */
+    /** 끝나는 시각(epoch ms). 시간표상 끝 + 연장. 수동 녹음이거나 모르면 0. */
     val plannedEndAt: Long = 0L,
+    /** 사용자가 연장한 분. */
+    val extendedMinutes: Int = 0,
 ) {
     companion object {
         val Idle = RecordingStatus(active = false)

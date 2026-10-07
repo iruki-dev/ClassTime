@@ -1,5 +1,7 @@
 package dev.iruki.classtime.ui.recordings
 
+import dev.iruki.classtime.audio.PlaybackState
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box

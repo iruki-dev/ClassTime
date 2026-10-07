@@ -29,6 +29,23 @@ class AppSettingsTest {
     }
 
     @Test
+    fun theme_defaultsToSystem_andPersists() {
+        assertThat(settings().themeMode.value).isEqualTo(ThemeMode.SYSTEM)
+        settings().setThemeMode(ThemeMode.DARK)
+        assertThat(settings().themeMode.value).isEqualTo(ThemeMode.DARK)
+        settings().setThemeMode(ThemeMode.SYSTEM)
+    }
+
+    @Test
+    fun reminder_defaultsToTenMinutes_andIsClamped() {
+        assertThat(settings().reminderMinutes.value).isEqualTo(AppSettings.DEFAULT_REMINDER)
+        settings().setReminderMinutes(500)
+        assertThat(settings().reminderMinutes.value).isEqualTo(60)
+        settings().setReminderMinutes(0)
+        assertThat(settings().reminderMinutes.value).isEqualTo(0)
+    }
+
+    @Test
     fun standbyState_isOnlyReadyWhenServiceHoldsTheMic() {
         // 서비스가 떠 있어도 마이크를 못 쥐었으면 무음 녹음이 된다 = 준비된 게 아니다.
         assertThat(StandbyState(active = true, micReady = true).readyForSilentFreeRecording).isTrue()

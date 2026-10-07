@@ -13,6 +13,7 @@ import androidx.room.PrimaryKey
  * @param auto 자동 녹음이면 true, 수동이면 false
  * @param ongoing 아직 녹음 중이면 true
  * @param peakAmplitude 녹음 내내 관측한 최대 진폭. -1 = 측정 안 됨(구버전), 0 = **무음**, >0 = 정상.
+ * @param compressed 저용량(음성용 비트레이트)으로 다시 인코딩했는지. 압축본도 그대로 재생된다.
  */
 @Entity(tableName = "recordings")
 data class Recording(
@@ -29,6 +30,7 @@ data class Recording(
     val auto: Boolean = false,
     val ongoing: Boolean = false,
     val peakAmplitude: Int = UNKNOWN_AMPLITUDE,
+    val compressed: Boolean = false,
 ) {
     /** 소리가 전혀 담기지 않은 녹음. 마이크가 차단된 채로 녹음됐다는 뜻. */
     val isSilent get() = !ongoing && peakAmplitude == 0

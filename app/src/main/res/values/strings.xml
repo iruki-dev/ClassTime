@@ -39,6 +39,8 @@
     <string name="channel_recording_desc">수업을 녹음하거나 녹음을 기다리는 동안 보여요.</string>
     <string name="channel_warning_name">녹음 경고</string>
     <string name="channel_warning_desc">소리가 녹음되지 않는 등 확인이 필요할 때 알려 드려요.</string>
+    <string name="channel_reminder_name">수업 알림</string>
+    <string name="channel_reminder_desc">수업이 시작되기 전에 알려 드려요.</string>
 
     <!-- ===== 녹음 서비스 알림 ===== -->
     <string name="notif_recording_title">녹음 중</string>
@@ -47,6 +49,12 @@
     <string name="notif_preparing">녹음 준비 중…</string>
     <string name="notif_recording_subject">%1$s 녹음 중</string>
     <string name="notif_standby_text">수업 시간이 되면 소리까지 녹음해요</string>
+    <string name="notif_until">%1$s까지</string>
+    <string name="notif_extend">%1$d분 연장</string>
+    <string name="notif_remind_title">%1$d분 뒤 %2$s</string>
+    <string name="notif_remind_auto_on">자동으로 녹음해요</string>
+    <string name="notif_remind_auto_off">자동 녹음은 꺼져 있어요</string>
+    <string name="notif_remind_auto_unready">앱을 한 번 열어 두면 소리까지 녹음해요</string>
 
     <!-- 무음 경고 -->
     <string name="notif_silence_title">소리가 들어오지 않아요</string>
@@ -289,6 +297,20 @@
     <string name="player_meta_auto">%1$s · 자동 녹음 · %2$s</string>
     <string name="player_meta_manual">%1$s · 수동 녹음 · %2$s</string>
     <string name="player_mini_meta">%1$s / %2$s · %3$s</string>
+
+    <!-- ===== 위젯 ===== -->
+    <string name="widget_name">오늘 수업</string>
+    <string name="widget_description">지금과 다음 수업, 녹음 상태를 보여 주고 바로 녹음할 수 있어요.</string>
+    <string name="widget_today">오늘 · %1$s</string>
+    <string name="widget_date_pattern">M월 d일 (E)</string>
+    <string name="widget_now">지금 수업</string>
+    <string name="widget_next">다음 · %1$s</string>
+    <string name="widget_none_today">오늘은 수업이 없어요</string>
+    <string name="widget_done_today">오늘 수업이 끝났어요</string>
+    <string name="widget_recording">● 녹음 중</string>
+    <string name="widget_until">%1$s까지</string>
+    <string name="widget_cd_record">지금 녹음</string>
+    <string name="widget_cd_stop">녹음 중지</string>
 
     <!-- ===== 기타 ===== -->
     <string name="exception_holiday">공휴일</string>

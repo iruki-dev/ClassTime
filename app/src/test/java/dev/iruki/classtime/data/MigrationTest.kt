@@ -33,6 +33,7 @@ class MigrationTest {
     // app/schemas/.../<version>.json 의 identityHash
     private val v1Hash = "839050a561be59fbbd39b6707d5f9413"
     private val v2Hash = "45b4f1cbcd1b8b691aa0f7c342e35281"
+    private val v3Hash = V3_HASH
 
     private val v1Tables = listOf(
         "CREATE TABLE IF NOT EXISTS `courses` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
@@ -102,7 +103,7 @@ class MigrationTest {
 
     private fun openWithMigrations(): AppDatabase =
         Room.databaseBuilder(context, AppDatabase::class.java, dbName)
-            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3)
+            .addMigrations(*AppDatabase.ALL_MIGRATIONS)
             .build()
 
     @Test
@@ -152,6 +153,28 @@ class MigrationTest {
     }
 
     @Test
+    fun migrate3to4_addsIconAndCompressedWithSafeDefaults() = runBlocking {
+        createLegacyDatabase(3, v3Hash, v3Tables) { db ->
+            db.execSQL(
+                "INSERT INTO courses (id, groupId, subject, professor, room, dayOfWeek, startMinute, endMinute, autoRecord, colorArgb) " +
+                    "VALUES (4, 'g-os', '운영체제', '', '', 2, 540, 615, 1, -16777216)"
+            )
+            db.execSQL(
+                "INSERT INTO recordings (id, courseId, subject, professor, fileName, uri, relativePath, startedAt, durationMs, sizeBytes, auto, ongoing, peakAmplitude) " +
+                    "VALUES (9, 4, '운영체제', '', 'o.m4a', 'content://x/9', 'Music/ClassTime/운영체제', 1000, 2000, 300, 1, 0, 1200)"
+            )
+        }
+
+        val db = openWithMigrations()
+        // 빈 아이콘 = 과목명으로 짐작. 기존 녹음은 압축되지 않은 원본이다.
+        assertThat(db.courseDao().getAll().single().icon).isEmpty()
+        val rec = db.recordingDao().getById(9)!!
+        assertThat(rec.compressed).isFalse()
+        assertThat(rec.peakAmplitude).isEqualTo(1200)
+        db.close()
+    }
+
+    @Test
     fun migrate1to3_withEmptyDatabase_stillOpens() = runBlocking {
         createLegacyDatabase(1, v1Hash, v1Tables)
         val db = openWithMigrations()
@@ -160,7 +183,22 @@ class MigrationTest {
         db.close()
     }
 
+    private val v3Tables = v2Tables.map {
+        if (it.contains("`recordings`")) RECORDINGS_V3 else it
+    }
+
     companion object {
+        /** app/schemas/.../3.json 의 identityHash */
+        private const val V3_HASH = "88fcd3a969b9149ef22f32a4ff4c9f7c"
+
+        private const val RECORDINGS_V3 =
+            "CREATE TABLE IF NOT EXISTS `recordings` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "`courseId` INTEGER, `subject` TEXT NOT NULL, `professor` TEXT NOT NULL, " +
+                "`fileName` TEXT NOT NULL, `uri` TEXT NOT NULL, `relativePath` TEXT NOT NULL, " +
+                "`startedAt` INTEGER NOT NULL, `durationMs` INTEGER NOT NULL, " +
+                "`sizeBytes` INTEGER NOT NULL, `auto` INTEGER NOT NULL, `ongoing` INTEGER NOT NULL, " +
+                "`peakAmplitude` INTEGER NOT NULL)"
+
         private const val RECORDINGS_V2 =
             "CREATE TABLE IF NOT EXISTS `recordings` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
                 "`courseId` INTEGER, `subject` TEXT NOT NULL, `professor` TEXT NOT NULL, " +

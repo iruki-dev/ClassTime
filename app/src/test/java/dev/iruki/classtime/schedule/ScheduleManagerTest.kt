@@ -14,6 +14,7 @@ import dev.iruki.classtime.data.Recording
 import dev.iruki.classtime.data.RecordingStatus
 import dev.iruki.classtime.data.Term
 import dev.iruki.classtime.service.RecordingService
+import dev.iruki.classtime.util.AppSettings
 import dev.iruki.classtime.util.TimeUtils
 import java.time.LocalDate
 import kotlinx.coroutines.CoroutineScope
@@ -44,6 +45,7 @@ class ScheduleManagerTest {
     private lateinit var repo: ClassTimeRepository
     private lateinit var manager: ScheduleManager
     private lateinit var alarmManager: AlarmManager
+    private lateinit var settings: AppSettings
 
     private val tomorrow: LocalDate = LocalDate.now().plusDays(1)
     private val tomorrowDow: Int = tomorrow.dayOfWeek.value
@@ -65,7 +67,9 @@ class ScheduleManagerTest {
             storage = RecordingStorage(context),
             scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
         )
-        manager = ScheduleManager(context, repo)
+        // 수업 전 알림은 따로 검증한다. 여기서 켜 두면 알람 개수를 세는 테스트가 모두 흔들린다.
+        settings = AppSettings(context).apply { setReminderMinutes(0) }
+        manager = ScheduleManager(context, repo, settings)
         alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
     }
 
@@ -106,6 +110,35 @@ class ScheduleManagerTest {
         manager.rescheduleAll()
 
         assertThat(scheduledTriggerTimes()).isEmpty()
+    }
+
+    @Test
+    fun reminder_isArmedBeforeClass_evenWhenAutoRecordIsOff() = runTest {
+        settings.setReminderMinutes(10)
+        addAutoCourse(auto = false)
+
+        manager.rescheduleAll()
+
+        // 녹음 알람은 없고, 수업 10분 전 알림 하나만.
+        assertThat(scheduledTriggerTimes()).containsExactly(
+            TimeUtils.millisAt(tomorrow, startMinute) - 10 * 60_000L,
+        )
+    }
+
+    @Test
+    fun reminder_isCancelledWhenTurnedOff() = runTest {
+        settings.setReminderMinutes(10)
+        addAutoCourse()
+        manager.rescheduleAll()
+        assertThat(scheduledTriggerTimes()).hasSize(3)
+
+        settings.setReminderMinutes(0)
+        manager.rescheduleAll()
+
+        assertThat(scheduledTriggerTimes()).containsExactly(
+            TimeUtils.millisAt(tomorrow, startMinute),
+            TimeUtils.millisAt(tomorrow, endMinute),
+        )
     }
 
     /**

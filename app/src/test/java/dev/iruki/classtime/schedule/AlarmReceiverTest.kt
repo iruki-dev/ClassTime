@@ -73,12 +73,13 @@ class AlarmReceiverTest {
     }
 
     @Test
-    fun stopAlarm_stopsRecording() {
+    fun stopAlarm_sendsScheduledStop_soAnExtendedRecordingCanIgnoreIt() {
         deliver(ScheduleManager.ACTION_STOP)
 
         val started = startedService()
         assertThat(started).isNotNull()
-        assertThat(started!!.action).isEqualTo(RecordingService.ACTION_STOP)
+        // 그냥 STOP 이면 사용자가 연장한 수업도 시간표 끝에서 잘린다.
+        assertThat(started!!.action).isEqualTo(RecordingService.ACTION_STOP_SCHEDULED)
     }
 
     /** 회귀: 종료 알람이 녹음을 다시 시작시켜서는 안 된다. */
