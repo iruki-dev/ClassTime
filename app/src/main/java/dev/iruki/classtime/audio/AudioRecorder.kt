@@ -52,6 +52,9 @@ class AudioRecorder(private val context: Context) {
     /** 무음이 [SILENCE_VERDICT_MS] 이상 이어지면 호출된다(한 번만). */
     var onSilenceSuspected: (() -> Unit)? = null
 
+    /** 진폭 표본마다(약 0.5초) 호출된다. 표본화 스레드에서 불리므로 가볍게 처리할 것. */
+    var onLevel: ((Int) -> Unit)? = null
+
     fun start(output: Uri) {
         check(recorder == null) { "이미 녹음이 진행 중입니다." }
 
@@ -132,6 +135,7 @@ class AudioRecorder(private val context: Context) {
                 val rec = recorder ?: return
                 val amp = runCatching { rec.maxAmplitude }.getOrDefault(0)
                 if (amp > peak) peak = amp
+                runCatching { onLevel?.invoke(amp) }
 
                 val elapsed = SystemClock.elapsedRealtime() - startedElapsed
                 if (!silenceReported && peak == 0 && elapsed >= SILENCE_VERDICT_MS) {

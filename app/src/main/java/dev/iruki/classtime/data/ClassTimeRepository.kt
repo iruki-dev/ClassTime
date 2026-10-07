@@ -71,6 +71,17 @@ class ClassTimeRepository @Inject constructor(
     private val _standby = MutableStateFlow(StandbyState())
     val standby = _standby.asStateFlow()
 
+    /**
+     * 녹음 중 마이크 입력 크기(0..32767, 0.5초마다). 화면이 ‘소리가 들어오고 있어요’를
+     * 보여 주는 데만 쓴다. 녹음 중이 아니면 0.
+     */
+    private val _inputLevel = MutableStateFlow(0)
+    val inputLevel = _inputLevel.asStateFlow()
+
+    fun updateInputLevel(level: Int) {
+        _inputLevel.value = level
+    }
+
     fun updateStandby(state: StandbyState) {
         _standby.value = state
     }
@@ -203,6 +214,8 @@ data class RecordingStatus(
     val subject: String = "",
     val auto: Boolean = false,
     val startedAt: Long = 0L,
+    /** 시간표상 끝나는 시각(epoch ms). 수동 녹음이거나 모르면 0. */
+    val plannedEndAt: Long = 0L,
 ) {
     companion object {
         val Idle = RecordingStatus(active = false)

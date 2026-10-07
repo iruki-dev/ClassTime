@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.ClassTime" parent="android:Theme.Material.Light.NoActionBar" />
+    <!-- 첫 프레임이 그려지기 전 흰 화면이 번쩍이지 않도록 앱 바탕색(surfaceContainer)을 창 배경으로. -->
+    <style name="Theme.ClassTime" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/window_background</item>
+    </style>
 </resources>
