@@ -14,6 +14,11 @@ import dev.iruki.classtime.data.CourseDao
 import dev.iruki.classtime.data.RecordingDao
 import dev.iruki.classtime.data.ScheduleExceptionDao
 import dev.iruki.classtime.data.TermDao
+import dev.iruki.classtime.data.TranscriptDao
+import dev.iruki.classtime.ai.AiSettings
+import dev.iruki.classtime.ai.SecretStore
+import dev.iruki.classtime.ai.TranscriptionEngine
+import dev.iruki.classtime.ai.TranscriptionQueue
 import dev.iruki.classtime.util.AppSettings
 import javax.inject.Qualifier
 import javax.inject.Singleton
@@ -48,6 +53,35 @@ object AppModule {
     @Provides fun provideTermDao(db: AppDatabase): TermDao = db.termDao()
     @Provides fun provideExceptionDao(db: AppDatabase): ScheduleExceptionDao =
         db.scheduleExceptionDao()
+    @Provides fun provideTranscriptDao(db: AppDatabase): TranscriptDao = db.transcriptDao()
+
+    // --- 실험적 기능: AI 텍스트 변환 ---
+
+    @Provides
+    @Singleton
+    fun provideSecretStore(@ApplicationContext context: Context): SecretStore = SecretStore(context)
+
+    @Provides
+    @Singleton
+    fun provideAiSettings(@ApplicationContext context: Context, secrets: SecretStore): AiSettings =
+        AiSettings(context, secrets)
+
+    @Provides
+    @Singleton
+    fun provideTranscriptionEngine(
+        @ApplicationContext context: Context,
+        transcripts: TranscriptDao,
+        recordings: RecordingDao,
+        settings: AiSettings,
+    ): TranscriptionEngine = TranscriptionEngine(context, transcripts, recordings, settings)
+
+    @Provides
+    @Singleton
+    fun provideTranscriptionQueue(
+        @ApplicationContext context: Context,
+        transcripts: TranscriptDao,
+        settings: AiSettings,
+    ): TranscriptionQueue = TranscriptionQueue(context, transcripts, settings)
 
     @Provides
     @Singleton

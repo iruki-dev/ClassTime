@@ -2,4 +2,6 @@
 <full-backup-content>
     <include domain="database" path="classtime.db" />
     <include domain="sharedpref" path="." />
+    <!-- API 키는 기기 Keystore 로 암호화돼 다른 기기에서는 풀리지 않는다. -->
+    <exclude domain="sharedpref" path="classtime_secrets.xml" />
 </full-backup-content>

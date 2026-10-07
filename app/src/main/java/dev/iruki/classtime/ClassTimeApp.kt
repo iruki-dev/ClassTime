@@ -79,7 +79,14 @@ class ClassTimeApp : Application() {
         ).apply {
             description = getString(R.string.channel_reminder_desc)
         }
-        notificationManager(this).createNotificationChannels(listOf(recording, warning, reminder))
+        val transcription = NotificationChannel(
+            CHANNEL_TRANSCRIPTION,
+            getString(R.string.channel_transcription_name),
+            NotificationManager.IMPORTANCE_LOW,
+        ).apply {
+            setShowBadge(false)
+        }
+        notificationManager(this).createNotificationChannels(listOf(recording, warning, reminder, transcription))
     }
 
     companion object {
@@ -88,6 +95,7 @@ class ClassTimeApp : Application() {
         const val CHANNEL_RECORDING = "recording"
         const val CHANNEL_WARNING = "warning"
         const val CHANNEL_REMINDER = "reminder"
+        const val CHANNEL_TRANSCRIPTION = "transcription"
 
         fun notificationManager(context: Context): NotificationManager =
             context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager

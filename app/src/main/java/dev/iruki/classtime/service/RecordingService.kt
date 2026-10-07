@@ -15,6 +15,7 @@ import dagger.hilt.android.AndroidEntryPoint
 import dev.iruki.classtime.ClassTimeApp
 import dev.iruki.classtime.MainActivity
 import dev.iruki.classtime.R
+import dev.iruki.classtime.ai.TranscriptionQueue
 import dev.iruki.classtime.audio.AudioRecorder
 import dev.iruki.classtime.audio.RecordingStorage
 import dev.iruki.classtime.data.ClassTimeRepository
@@ -61,6 +62,7 @@ class RecordingService : Service() {
     @Inject lateinit var repo: ClassTimeRepository
     @Inject lateinit var storage: RecordingStorage
     @Inject lateinit var settings: AppSettings
+    @Inject lateinit var transcription: TranscriptionQueue
 
     /**
      * 서비스가 죽어도 끝나야 하는 마무리 작업용. [serviceScope] 에서 돌리면
@@ -435,14 +437,16 @@ class RecordingService : Service() {
         val peak = result?.peakAmplitude ?: Recording.UNKNOWN_AMPLITUDE
 
         repo.recording(s.rowId)?.let { row ->
-            repo.updateRecording(
-                row.copy(
-                    ongoing = false,
-                    durationMs = duration,
-                    sizeBytes = size,
-                    peakAmplitude = peak,
-                )
+            val done = row.copy(
+                ongoing = false,
+                durationMs = duration,
+                sizeBytes = size,
+                peakAmplitude = peak,
             )
+            repo.updateRecording(done)
+            // 실험적 기능: 자동 텍스트 변환이 켜져 있으면 대기열에 넣는다(꺼져 있으면 아무 일도 없음).
+            runCatching { transcription.onRecordingFinished(done) }
+                .onFailure { AppLog.w(TAG, "텍스트 변환 대기열에 넣지 못했습니다", it) }
         }
         repo.updateStatus(RecordingStatus.Idle)
 

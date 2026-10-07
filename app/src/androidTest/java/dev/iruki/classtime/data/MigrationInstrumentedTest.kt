@@ -40,7 +40,7 @@ class MigrationInstrumentedTest {
         }
 
         val db = helper.runMigrationsAndValidate(
-            dbName, 4, true, *AppDatabase.ALL_MIGRATIONS,
+            dbName, 5, true, *AppDatabase.ALL_MIGRATIONS,
         )
 
         db.query("SELECT subject, groupId FROM courses").use { c ->
@@ -64,7 +64,7 @@ class MigrationInstrumentedTest {
         }
 
         val db = helper.runMigrationsAndValidate(
-            dbName, 4, true, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4,
+            dbName, 5, true, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5,
         )
 
         db.query("SELECT peakAmplitude FROM recordings").use { c ->

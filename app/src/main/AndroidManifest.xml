@@ -12,6 +12,14 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <!--
+      실험적 기능 ‘AI 텍스트 변환’ 전용. 사용자가 키를 넣고 켠 녹음만 Groq·NVIDIA 로 보낸다.
+      변환은 길어서 진행 알림과 함께 데이터 동기화 포그라운드 작업으로 돈다.
+    -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+
+    <!--
       백그라운드에서 시작된 포그라운드 서비스의 마이크 차단(Android 11+)을 피하기 위한 권한.
       이게 없으면 수업 시간 알람으로 시작된 자동 녹음이 '무음 파일'로 저장된다.
       사용자가 설정에서 직접 켜야 하는 특별 권한이다. AppPermissions.BACKGROUND_MIC 참고.
@@ -59,6 +67,12 @@
             android:name=".service.RecordingService"
             android:exported="false"
             android:foregroundServiceType="microphone" />
+
+        <!-- WorkManager 의 포그라운드 작업(텍스트 변환)에 서비스 종류를 지정한다(Android 14+). -->
+        <service
+            android:name="androidx.work.impl.foreground.SystemForegroundService"
+            android:foregroundServiceType="dataSync"
+            tools:node="merge" />
 
         <receiver
             android:name=".schedule.AlarmReceiver"

@@ -348,6 +348,9 @@ dependencies {
 
     implementation(libs.kotlinx.coroutines.android)
 
+    // 실험적 기능 ‘AI 텍스트 변환’의 대기열. 한도 대기·네트워크 복구 후에도 이어서 처리한다.
+    implementation(libs.androidx.work.runtime)
+
     implementation(libs.hilt.android)
     implementation(libs.androidx.hilt.navigation.compose)
     ksp(libs.hilt.compiler)
@@ -363,6 +366,7 @@ dependencies {
     testImplementation(libs.androidx.room.testing)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.truth)
+    testImplementation(libs.androidx.work.testing)
     testImplementation(libs.hilt.android.testing)
     kspTest(libs.hilt.compiler)
 
