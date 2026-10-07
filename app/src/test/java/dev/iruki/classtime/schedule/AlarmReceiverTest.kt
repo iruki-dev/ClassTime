@@ -82,6 +82,21 @@ class AlarmReceiverTest {
         assertThat(started!!.action).isEqualTo(RecordingService.ACTION_STOP_SCHEDULED)
     }
 
+    @Test
+    fun skippedClass_isNotRecorded_butOtherDaysAre() {
+        val today = java.time.LocalDate.now().toEpochDay()
+        dev.iruki.classtime.util.AppSettings(context).skipOnce(
+            dev.iruki.classtime.util.AppSettings.courseSkipKey(7L, today)
+        )
+
+        deliver(ScheduleManager.ACTION_START, ScheduleManager.EXTRA_COURSE_ID, 7L)
+        assertThat(startedService()).isNull()
+
+        // 다른 과목 행은 그대로 녹음된다.
+        deliver(ScheduleManager.ACTION_START, ScheduleManager.EXTRA_COURSE_ID, 8L)
+        assertThat(startedService()?.action).isEqualTo(RecordingService.ACTION_START_AUTO)
+    }
+
     /** 회귀: 종료 알람이 녹음을 다시 시작시켜서는 안 된다. */
     @Test
     fun stopAlarm_neverStartsARecording() {

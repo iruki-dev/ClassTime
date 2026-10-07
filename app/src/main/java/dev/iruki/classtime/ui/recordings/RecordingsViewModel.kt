@@ -11,8 +11,6 @@ import dev.iruki.classtime.R
 import dev.iruki.classtime.audio.PlaybackController
 import dev.iruki.classtime.audio.PlaybackState
 import dev.iruki.classtime.audio.RecordingStorage
-import dev.iruki.classtime.data.CompressionState
-import dev.iruki.classtime.data.LibraryMaintenance
 import dev.iruki.classtime.data.ClassTimeRepository
 import dev.iruki.classtime.data.Recording
 import javax.inject.Inject
@@ -31,7 +29,6 @@ class RecordingsViewModel @Inject constructor(
     private val repo: ClassTimeRepository,
     private val storage: RecordingStorage,
     private val player: PlaybackController,
-    private val maintenance: LibraryMaintenance,
 ) : ViewModel() {
 
     /** 과목별로 묶은 목록. 최신 녹음이 있는 과목이 위로. */
@@ -63,23 +60,12 @@ class RecordingsViewModel @Inject constructor(
 
     val playback: StateFlow<PlaybackState> = player.state
 
-    val compression: StateFlow<CompressionState> = maintenance.compression
-
     /** 지금 실제로 녹음이 진행 중인지. false 면 'ongoing' 으로 남은 행은 재생 가능한 완료본으로 취급. */
     val recordingActive: StateFlow<Boolean> = repo.status
         .map { it.active }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
     fun toggle(recording: Recording) = player.toggle(recording)
-    fun seekTo(ms: Int) = player.seekTo(ms)
-    fun seekBy(deltaMs: Int) = player.seekBy(deltaMs)
-    fun setSpeed(speed: Float) = player.setSpeed(speed)
-    fun stopPlayback() = player.stop()
-
-    /** 이 녹음 하나를 압축한다. 진행 상황은 [compression]. */
-    fun compress(recording: Recording) = maintenance.compress(listOf(recording))
-
-    fun dismissCompressionResult() = maintenance.dismissCompressionResult()
 
     fun delete(recording: Recording) = viewModelScope.launch(Dispatchers.IO) {
         kotlinx.coroutines.withContext(Dispatchers.Main) { player.releaseIfPlaying(recording.id) }

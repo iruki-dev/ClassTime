@@ -48,7 +48,32 @@ class AppSettings(context: Context) {
         _reminderMinutes.value = value
     }
 
+    // --- 이번 한 번만 녹음하지 않기 ---
+
+    /**
+     * 수업 전 알림의 ‘이번엔 녹음 안 함’. [key] 는 과목 행(c) 또는 보강(e)과 그 날짜를 묶은 것이라
+     * 다음 주 같은 수업에는 영향이 없다.
+     */
+    fun skipOnce(key: String) {
+        val today = java.time.LocalDate.now().toEpochDay()
+        // 지난 날짜의 표시는 함께 치운다.
+        val kept = (prefs.getStringSet(KEY_SKIPS, emptySet()) ?: emptySet())
+            .filter { (it.substringAfterLast(':').toLongOrNull() ?: 0L) >= today }
+            .toSet()
+        prefs.edit().putStringSet(KEY_SKIPS, kept + key).apply()
+    }
+
+    fun isSkipped(key: String): Boolean =
+        key in (prefs.getStringSet(KEY_SKIPS, emptySet()) ?: emptySet())
+
     companion object {
+        /** 과목 행 [courseId] 의 [epochDay] 수업. */
+        fun courseSkipKey(courseId: Long, epochDay: Long) = "c:$courseId:$epochDay"
+
+        /** 보강 [exceptionId] 의 [epochDay] 수업. */
+        fun makeupSkipKey(exceptionId: Long, epochDay: Long) = "e:$exceptionId:$epochDay"
+
+        private const val KEY_SKIPS = "skip_once"
         private const val KEY_STANDBY = "standby_enabled"
         private const val KEY_THEME = "theme_mode"
         private const val KEY_REMINDER = "reminder_minutes"

@@ -153,7 +153,7 @@ class MigrationTest {
     }
 
     @Test
-    fun migrate3to4_addsIconAndCompressedWithSafeDefaults() = runBlocking {
+    fun migrate3to4_addsIconWithSafeDefault() = runBlocking {
         createLegacyDatabase(3, v3Hash, v3Tables) { db ->
             db.execSQL(
                 "INSERT INTO courses (id, groupId, subject, professor, room, dayOfWeek, startMinute, endMinute, autoRecord, colorArgb) " +
@@ -166,11 +166,9 @@ class MigrationTest {
         }
 
         val db = openWithMigrations()
-        // 빈 아이콘 = 과목명으로 짐작. 기존 녹음은 압축되지 않은 원본이다.
+        // 빈 아이콘 = 과목명으로 짐작. 녹음은 그대로 남는다.
         assertThat(db.courseDao().getAll().single().icon).isEmpty()
-        val rec = db.recordingDao().getById(9)!!
-        assertThat(rec.compressed).isFalse()
-        assertThat(rec.peakAmplitude).isEqualTo(1200)
+        assertThat(db.recordingDao().getById(9)!!.peakAmplitude).isEqualTo(1200)
         db.close()
     }
 

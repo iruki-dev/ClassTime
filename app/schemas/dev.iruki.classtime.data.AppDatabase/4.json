@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 4,
-    "identityHash": "ff80629a522194f95a13ab51fb9fb569",
+    "identityHash": "e91e629783ff3b9fe30f427544716de0",
     "entities": [
       {
         "tableName": "courses",
@@ -86,7 +86,7 @@
       },
       {
         "tableName": "recordings",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `courseId` INTEGER, `subject` TEXT NOT NULL, `professor` TEXT NOT NULL, `fileName` TEXT NOT NULL, `uri` TEXT NOT NULL, `relativePath` TEXT NOT NULL, `startedAt` INTEGER NOT NULL, `durationMs` INTEGER NOT NULL, `sizeBytes` INTEGER NOT NULL, `auto` INTEGER NOT NULL, `ongoing` INTEGER NOT NULL, `peakAmplitude` INTEGER NOT NULL, `compressed` INTEGER NOT NULL)",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `courseId` INTEGER, `subject` TEXT NOT NULL, `professor` TEXT NOT NULL, `fileName` TEXT NOT NULL, `uri` TEXT NOT NULL, `relativePath` TEXT NOT NULL, `startedAt` INTEGER NOT NULL, `durationMs` INTEGER NOT NULL, `sizeBytes` INTEGER NOT NULL, `auto` INTEGER NOT NULL, `ongoing` INTEGER NOT NULL, `peakAmplitude` INTEGER NOT NULL)",
         "fields": [
           {
             "fieldPath": "id",
@@ -163,12 +163,6 @@
           {
             "fieldPath": "peakAmplitude",
             "columnName": "peakAmplitude",
-            "affinity": "INTEGER",
-            "notNull": true
-          },
-          {
-            "fieldPath": "compressed",
-            "columnName": "compressed",
             "affinity": "INTEGER",
             "notNull": true
           }
@@ -298,7 +292,7 @@
     "views": [],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'ff80629a522194f95a13ab51fb9fb569')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'e91e629783ff3b9fe30f427544716de0')"
     ]
   }
 }

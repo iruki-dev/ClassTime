@@ -20,4 +20,13 @@ class Clock12Test {
             assertThat(Clock12.of(m).toMinuteOfDay()).isEqualTo(m)
         }
     }
+
+    @Test
+    fun timePicker_layoutFollowsWindowHeight_soTheDialNeverGetsSquashed() {
+        assertThat(TimePickerFit.of(800)).isEqualTo(TimePickerFit.VERTICAL)
+        // 가로 화면 휴대폰(약 390dp): 다이얼을 옆에 두는 가로 배치.
+        assertThat(TimePickerFit.of(390)).isEqualTo(TimePickerFit.HORIZONTAL)
+        // 분할 화면처럼 그보다 낮으면 다이얼이 들어가지 않으니 입력으로.
+        assertThat(TimePickerFit.of(300)).isEqualTo(TimePickerFit.INPUT)
+    }
 }

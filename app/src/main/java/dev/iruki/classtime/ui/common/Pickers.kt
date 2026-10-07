@@ -1,49 +1,43 @@
 package dev.iruki.classtime.ui.common
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.Keyboard
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimeInput
+import androidx.compose.material3.TimePicker
+import androidx.compose.material3.TimePickerDefaults
+import androidx.compose.material3.TimePickerLayoutType
 import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.role
-import androidx.compose.ui.semantics.selected
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import dev.iruki.classtime.R
 import java.time.Instant
 import java.time.LocalDate
@@ -63,12 +57,14 @@ internal data class Clock12(val pm: Boolean, val hour: Int, val minute: Int) {
 }
 
 /**
- * 시각 고르기. 시계 다이얼 대신 **오전/오후 → 시 → 분** 칸으로 고른다.
+ * 시각 고르기: M3 시계 다이얼 + 오전/오후.
  *
- * 다이얼은 (1) 24시간 다이얼의 안쪽·바깥쪽 고리가 무엇인지 알기 어려웠고, (2) 화면 높이가
- * 줄면 원이 찌그러지거나 잘렸다. 칸은 줄 바꿈만 될 뿐 깨지지 않고, 그래도 높이가 모자라면
- * 대화상자 안이 스크롤된다. 5분 단위가 아닌 시각은 키보드로 입력한다.
+ * material3 1.3 의 다이얼은 늘 256dp 이고, 기본 배치(세로/가로)를 **화면** 비율로 정한다.
+ * 그래서 분할 화면이나 낮은 창에서는 다이얼이 잘리거나 대화상자가 찌그러졌다.
+ * 여기서는 **창 높이**로 직접 고른다 — 넉넉하면 세로, 낮으면 가로, 가로도 안 들어가면
+ * 키보드 입력. 다이얼은 어느 경우에도 정원 그대로다(M3 스펙: 스크롤하지 않는다).
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TimePickerDialog(
     initialMinute: Int,
@@ -76,123 +72,63 @@ fun TimePickerDialog(
     onDismiss: () -> Unit,
     onConfirm: (Int) -> Unit,
 ) {
-    val initial = remember(initialMinute) { Clock12.of(initialMinute) }
-    var pm by remember { mutableStateOf(initial.pm) }
-    var hour by remember { mutableIntStateOf(initial.hour) }
-    var minute by remember { mutableIntStateOf(initial.minute) }
-    var typing by remember { mutableStateOf(false) }
+    val state = rememberTimePickerState(
+        initialHour = (initialMinute / 60) % 24,
+        initialMinute = initialMinute % 60,
+        is24Hour = false,
+    )
+    val layout = TimePickerFit.of(LocalConfiguration.current.screenHeightDp)
+    var typing by remember { mutableStateOf(layout == TimePickerFit.INPUT) }
     val c = MaterialTheme.colorScheme
+    val colors = TimePickerDefaults.colors(
+        // 오전/오후 선택은 앱의 다른 선택(칩·연결 버튼)과 같은 secondaryContainer 로 맞춘다.
+        periodSelectorSelectedContainerColor = c.secondaryContainer,
+        periodSelectorSelectedContentColor = c.onSecondaryContainer,
+    )
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(title, style = MaterialTheme.typography.titleSmall, color = c.onSurfaceVariant, modifier = Modifier.weight(1f))
-                IconButton(onClick = { typing = !typing }) {
-                    Icon(
-                        if (typing) Icons.Rounded.GridView else Icons.Rounded.Keyboard,
-                        contentDescription = stringResource(if (typing) R.string.time_pick_grid else R.string.time_pick_keyboard),
-                        tint = c.onSurfaceVariant,
-                    )
-                }
-            }
-        },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState())) {
-                Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text(
-                        stringResource(if (pm) R.string.time_pm else R.string.time_am),
-                        style = MaterialTheme.typography.headlineSmall,
-                        color = c.primary,
-                        modifier = Modifier.padding(bottom = 4.dp),
-                    )
-                    Text("%d:%02d".format(hour, minute), style = MaterialTheme.typography.displayMedium)
-                }
-                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(top = 16.dp)) {
-                    listOf(false, true).forEachIndexed { i, isPm ->
-                        SegmentedButton(
-                            selected = pm == isPm,
-                            onClick = { pm = isPm },
-                            shape = SegmentedButtonDefaults.itemShape(i, 2),
-                        ) { Text(stringResource(if (isPm) R.string.time_pm else R.string.time_am)) }
-                    }
-                }
-                if (typing) {
-                    Row(Modifier.padding(top = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        NumberField(stringResource(R.string.time_hour), hour, 1..12, Modifier.weight(1f)) { hour = it }
-                        NumberField(stringResource(R.string.time_minute), minute, 0..59, Modifier.weight(1f)) { minute = it }
-                    }
-                } else {
-                    GridLabel(stringResource(R.string.time_hour))
-                    CellGrid(HOURS, selected = hour, label = { it.toString() }, aria = { stringResource(R.string.time_hour_cd, it) }) { hour = it }
-                    GridLabel(stringResource(R.string.time_minute))
-                    CellGrid(MINUTES, selected = minute, label = { "%02d".format(it) }, aria = { stringResource(R.string.time_minute_cd, it) }) { minute = it }
-                    if (minute % 5 != 0) {
-                        Text(
-                            stringResource(R.string.time_pick_odd_minute),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = c.onSurfaceVariant,
-                            modifier = Modifier.padding(top = 8.dp),
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(
+            shape = MaterialTheme.shapes.extraLarge,
+            color = c.surfaceContainerHigh,
+            tonalElevation = 6.dp,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp).widthIn(max = 640.dp),
+        ) {
+            // 가로 배치는 낮은 창(가로 휴대폰 ≈ 390dp)에 들어가야 하므로 여백을 줄인다.
+            val compact = layout != TimePickerFit.VERTICAL
+            Column(Modifier.padding(if (compact) 16.dp else 24.dp)) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = c.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = if (compact) 8.dp else 20.dp),
+                )
+                Box(Modifier.align(Alignment.CenterHorizontally)) {
+                    if (typing) {
+                        TimeInput(state = state, colors = colors)
+                    } else {
+                        TimePicker(
+                            state = state,
+                            colors = colors,
+                            layoutType = if (layout == TimePickerFit.VERTICAL) TimePickerLayoutType.Vertical
+                            else TimePickerLayoutType.Horizontal,
                         )
                     }
                 }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = { onConfirm(Clock12(pm, hour, minute).toMinuteOfDay()) }) {
-                Text(stringResource(R.string.action_confirm))
-            }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) } },
-    )
-}
-
-private val HOURS = listOf(12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11)
-private val MINUTES = (0..55 step 5).toList()
-
-@Composable
-private fun GridLabel(text: String) {
-    Text(
-        text,
-        style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(start = 4.dp, top = 20.dp, bottom = 8.dp),
-    )
-}
-
-/** 6칸씩 줄 바꿈하는 선택 칸. 화면이 좁거나 낮아도 원처럼 찌그러지지 않는다. */
-@Composable
-private fun CellGrid(
-    values: List<Int>,
-    selected: Int,
-    label: (Int) -> String,
-    aria: @Composable (Int) -> String,
-    onPick: (Int) -> Unit,
-) {
-    val c = MaterialTheme.colorScheme
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        values.chunked(6).forEach { row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                row.forEach { v ->
-                    val on = v == selected
-                    val description = aria(v)
-                    Surface(
-                        onClick = { onPick(v) },
-                        shape = MaterialTheme.shapes.medium,
-                        color = if (on) c.primary else c.surfaceContainerLowest,
-                        contentColor = if (on) c.onPrimary else c.onSurface,
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(44.dp)
-                            .semantics {
-                                role = Role.RadioButton
-                                selected = on
-                                contentDescription = description
-                            },
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text(label(v), style = if (on) MaterialTheme.typography.titleMedium else MaterialTheme.typography.bodyLarge)
+                Row(Modifier.fillMaxWidth().padding(top = if (compact) 4.dp else 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    // 창이 너무 낮으면 다이얼로 돌아갈 수 없다(들어가지 않으므로).
+                    if (layout != TimePickerFit.INPUT) {
+                        IconButton(onClick = { typing = !typing }, modifier = Modifier.offset(x = (-12).dp)) {
+                            Icon(
+                                if (typing) Icons.Rounded.Schedule else Icons.Rounded.Keyboard,
+                                contentDescription = stringResource(if (typing) R.string.time_pick_dial else R.string.time_pick_keyboard),
+                                tint = c.onSurfaceVariant,
+                            )
                         }
+                    }
+                    Spacer(Modifier.weight(1f))
+                    TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
+                    TextButton(onClick = { onConfirm(state.hour * 60 + state.minute) }) {
+                        Text(stringResource(R.string.action_confirm))
                     }
                 }
             }
@@ -200,22 +136,17 @@ private fun CellGrid(
     }
 }
 
-@Composable
-private fun NumberField(label: String, value: Int, range: IntRange, modifier: Modifier, onChange: (Int) -> Unit) {
-    var text by remember { mutableStateOf(value.toString()) }
-    OutlinedTextField(
-        value = text,
-        onValueChange = { raw ->
-            val digits = raw.filter { it.isDigit() }.take(2)
-            text = digits
-            digits.toIntOrNull()?.takeIf { it in range }?.let(onChange)
-        },
-        label = { Text(label) },
-        singleLine = true,
-        isError = text.toIntOrNull()?.let { it !in range } ?: true,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-        modifier = modifier,
-    )
+/** 창 높이(dp)에 들어가는 시각 고르기 배치. 경계는 대화상자 전체 높이(여백·버튼 포함)로 잡았다. */
+internal enum class TimePickerFit {
+    VERTICAL, HORIZONTAL, INPUT;
+
+    companion object {
+        fun of(windowHeightDp: Int): TimePickerFit = when {
+            windowHeightDp >= 600 -> VERTICAL
+            windowHeightDp >= 380 -> HORIZONTAL
+            else -> INPUT
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

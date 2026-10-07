@@ -1,6 +1,7 @@
 package dev.iruki.classtime.widget
 
 import android.content.Context
+import android.os.Build
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.DpSize
@@ -114,20 +115,42 @@ class TodayWidget : GlanceAppWidget() {
                     .fillMaxSize()
                     .appWidgetBackground()
                     .background(c.surface)
-                    .cornerRadius(24.dp)
+                    .then(systemCorner())
                     .padding(16.dp)
                     .clickable(actionStartActivity<MainActivity>()),
             ) {
+                val date = LocalDate.now().format(DateTimeFormatter.ofPattern(context.getString(R.string.widget_date_pattern)))
                 Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        context.getString(
-                            R.string.widget_today,
-                            LocalDate.now().format(DateTimeFormatter.ofPattern(context.getString(R.string.widget_date_pattern))),
-                        ),
-                        style = TextStyle(color = c.onSurfaceVariant, fontSize = 13.sp, fontWeight = FontWeight.Medium),
-                        maxLines = 1,
-                        modifier = GlanceModifier.defaultWeight(),
-                    )
+                    if (size.width >= WIDE.width) {
+                        // 넓으면 머리: 아이콘 + ‘오늘 수업’ / 날짜.
+                        Box(
+                            GlanceModifier.size(32.dp).background(c.secondaryContainer).cornerRadius(10.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Image(
+                                provider = ImageProvider(R.drawable.ic_widget_week),
+                                contentDescription = null,
+                                colorFilter = ColorFilter.tint(c.onSecondaryContainer),
+                                modifier = GlanceModifier.size(18.dp),
+                            )
+                        }
+                        Spacer(GlanceModifier.width(10.dp))
+                        Column(GlanceModifier.defaultWeight()) {
+                            Text(
+                                context.getString(R.string.widget_title),
+                                style = TextStyle(color = c.onSurface, fontSize = 14.sp, fontWeight = FontWeight.Medium),
+                                maxLines = 1,
+                            )
+                            Text(date, style = TextStyle(color = c.onSurfaceVariant, fontSize = 12.sp), maxLines = 1)
+                        }
+                    } else {
+                        Text(
+                            context.getString(R.string.widget_today, date),
+                            style = TextStyle(color = c.onSurfaceVariant, fontSize = 13.sp, fontWeight = FontWeight.Medium),
+                            maxLines = 1,
+                            modifier = GlanceModifier.defaultWeight(),
+                        )
+                    }
                     RecordButton(model.recording.active)
                 }
                 Spacer(GlanceModifier.height(8.dp))
@@ -164,9 +187,9 @@ class TodayWidget : GlanceAppWidget() {
             else RecordingService.manualIntent(context)
             Box(
                 GlanceModifier
-                    .size(40.dp)
+                    .size(48.dp)
                     .background(if (recording) Record else c.secondaryContainer)
-                    .cornerRadius(20.dp)
+                    .cornerRadius(24.dp)
                     .clickable(actionStartService(intent, isForegroundService = true)),
                 contentAlignment = Alignment.Center,
             ) {
@@ -176,10 +199,16 @@ class TodayWidget : GlanceAppWidget() {
                         if (recording) R.string.widget_cd_stop else R.string.widget_cd_record
                     ),
                     colorFilter = ColorFilter.tint(if (recording) c.onPrimary else c.onSecondaryContainer),
-                    modifier = GlanceModifier.size(20.dp),
+                    modifier = GlanceModifier.size(24.dp),
                 )
             }
         }
+
+        /** 홈 화면 다른 위젯과 같은 모서리. 시스템 반경은 Android 12 부터 있다. */
+        private fun systemCorner(): GlanceModifier =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                GlanceModifier.cornerRadius(android.R.dimen.system_app_widget_background_radius)
+            } else GlanceModifier.cornerRadius(16.dp)
 
         @Composable
         private fun RecordingBlock(model: TodayModel) {

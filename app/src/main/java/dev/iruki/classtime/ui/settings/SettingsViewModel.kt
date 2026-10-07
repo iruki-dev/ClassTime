@@ -6,7 +6,6 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dev.iruki.classtime.data.ClassTimeRepository
-import dev.iruki.classtime.data.CompressionState
 import dev.iruki.classtime.data.LibraryMaintenance
 import dev.iruki.classtime.data.RescanResult
 import dev.iruki.classtime.data.StandbyState
@@ -19,21 +18,19 @@ import dev.iruki.classtime.util.ThemeMode
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-
-/** 저장 공간 요약. */
-data class StorageSummary(val count: Int = 0, val bytes: Long = 0L, val compressible: Int = 0, val savable: Long = 0L)
 
 /** 시간표 다시 만들기 진행 단계. */
 sealed interface RebuildState {
     data object Idle : RebuildState
     data object Working : RebuildState
-    data class Preview(val results: List<TimetableInference.Result>, val existingSubjects: Set<String>) : RebuildState
+    data class Preview(
+        val results: List<TimetableInference.Result>,
+        val existingSubjects: Set<String>,
+        val recordingCount: Int,
+    ) : RebuildState
     data class Done(val added: Int) : RebuildState
 }
 
@@ -73,31 +70,12 @@ class SettingsViewModel @Inject constructor(
         if (enabled) RecordingService.startStandby(app) else RecordingService.stopStandby(app)
     }
 
-    // --- 저장 공간 ---
-
-    val storage: StateFlow<StorageSummary> = repo.recordings.map { list ->
-        val done = list.filter { !it.ongoing }
-        StorageSummary(
-            count = done.size,
-            bytes = done.sumOf { it.sizeBytes },
-            compressible = maintenance.compressible(done).size,
-            savable = maintenance.estimatedSavings(done),
-        )
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), StorageSummary())
-
-    val compression: StateFlow<CompressionState> = maintenance.compression
-
-    fun compressAll() = viewModelScope.launch {
-        maintenance.compress(repo.allRecordings())
-    }
-
-    fun dismissCompressionResult() = maintenance.dismissCompressionResult()
-
     // --- 폴더 검사 ---
 
     private val _rescanning = MutableStateFlow(false)
     val rescanning = _rescanning.asStateFlow()
 
+    /** 마지막 검사 결과. 설정 줄에 한 줄로 남긴다(화면을 떠나면 사라짐). */
     private val _rescanResult = MutableStateFlow<RescanResult?>(null)
     val rescanResult = _rescanResult.asStateFlow()
 
@@ -110,10 +88,6 @@ class SettingsViewModel @Inject constructor(
                 .getOrDefault(RescanResult(0, 0))
             _rescanning.value = false
         }
-    }
-
-    fun dismissRescanResult() {
-        _rescanResult.value = null
     }
 
     // --- 시간표 다시 만들기 ---
@@ -129,7 +103,8 @@ class SettingsViewModel @Inject constructor(
                 .onFailure { AppLog.e(TAG, "시간표 짐작 실패", it) }
                 .getOrDefault(emptyList())
             val existing = repo.allCourses().map { it.subject }.toSet()
-            _rebuild.value = RebuildState.Preview(results, existing)
+            val count = repo.allRecordings().count { !it.ongoing }
+            _rebuild.value = RebuildState.Preview(results, existing, count)
         }
     }
 

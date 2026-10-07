@@ -48,13 +48,4 @@ class RescanPlanTest {
         )
         assertThat(plan.missingCandidates.map { it.fileName }).containsExactly("gone.m4a")
     }
-
-    @Test
-    fun lowBitrateFiles_areMarkedCompressed() {
-        // 1시간에 14MB 남짓 = 32kbps.
-        assertThat(RescanPlan.looksCompressed(14_400_000, 3_600_000)).isTrue()
-        // 1시간에 43MB = 96kbps 원본.
-        assertThat(RescanPlan.looksCompressed(43_200_000, 3_600_000)).isFalse()
-        assertThat(RescanPlan.looksCompressed(100, 0)).isFalse()
-    }
 }

@@ -9,10 +9,8 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
@@ -199,8 +197,8 @@ fun tileContainer(): Color =
     else MaterialTheme.colorScheme.surfaceContainer
 
 /**
- * 과목 아이콘 타일. **무채색**이다 — 줄마다 색이 바뀌면 화면이 알록달록해지고 녹음·다음 같은
- * 상태 색이 묻힌다. 과목 색은 시간표 칸이 맡고, 필요하면 [dot] 으로 모서리에 점 하나만 붙인다.
+ * 과목 아이콘 타일. **무채색**이다 — 과목 색은 시간표 칸에만 쓰고, 아이콘과 같은 요소에
+ * 섞지 않는다. 줄마다 색이 바뀌면 녹음·다음 같은 상태 색이 묻힌다.
  */
 @Composable
 fun CourseIconTile(
@@ -208,27 +206,12 @@ fun CourseIconTile(
     size: Dp = 40.dp,
     container: Color = tileContainer(),
     content: Color = MaterialTheme.colorScheme.onSurfaceVariant,
-    dot: Color? = null,
-    dotRing: Color = MaterialTheme.colorScheme.surfaceContainerLow,
 ) {
-    Box(Modifier.size(size)) {
-        Box(
-            Modifier.size(size).background(container, RoundedCornerShape(size * 0.3f)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(icon.vector, contentDescription = null, tint = content, modifier = Modifier.size(size * 0.55f))
-        }
-        if (dot != null) {
-            Box(
-                Modifier
-                    .align(Alignment.BottomEnd)
-                    .offset(x = 2.dp, y = 2.dp)
-                    .size(size * 0.3f)
-                    .background(dotRing, CircleShape)
-                    .padding(3.dp)
-                    .background(dot, CircleShape)
-            )
-        }
+    Box(
+        Modifier.size(size).background(container, RoundedCornerShape(size * 0.3f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon.vector, contentDescription = null, tint = content, modifier = Modifier.size(size * 0.55f))
     }
 }
 

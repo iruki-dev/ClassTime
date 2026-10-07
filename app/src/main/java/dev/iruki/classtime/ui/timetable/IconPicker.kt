@@ -4,44 +4,51 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import dev.iruki.classtime.R
-import dev.iruki.classtime.ui.common.CourseIconTile
-import dev.iruki.classtime.ui.theme.AppTheme
 import dev.iruki.classtime.ui.theme.CourseIcon
 import dev.iruki.classtime.ui.theme.CourseIcons
 
-/** 과목명 옆의 아이콘 타일. 노션 페이지 아이콘처럼 눌러서 바꾼다. */
+/** 과목명 옆 56 아이콘 타일. 노션 페이지 아이콘처럼 눌러서 바꾼다. */
 @Composable
 internal fun IconPickerButton(icon: CourseIcon, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val c = MaterialTheme.colorScheme
@@ -57,100 +64,136 @@ internal fun IconPickerButton(icon: CourseIcon, onClick: () -> Unit, modifier: M
                 Icon(icon.vector, contentDescription = null, tint = c.onSurfaceVariant, modifier = Modifier.size(28.dp))
             }
         }
-        Box(
-            Modifier
+        Surface(
+            color = c.primary,
+            contentColor = c.onPrimary,
+            shape = CircleShape,
+            modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .offset(x = 2.dp, y = 2.dp)
+                .offset(x = 4.dp, y = 4.dp)
                 .size(22.dp)
-                .border(2.dp, c.surface, CircleShape)
-                .padding(2.dp)
-                .clip(CircleShape),
+                .border(2.dp, c.surface, CircleShape),
         ) {
-            Surface(color = c.primary, contentColor = c.onPrimary, shape = CircleShape, modifier = Modifier.size(18.dp)) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(Icons.Rounded.Edit, contentDescription = null, modifier = Modifier.size(12.dp))
-                }
+            Box(contentAlignment = Alignment.Center) {
+                Icon(Icons.Rounded.Edit, contentDescription = null, modifier = Modifier.size(12.dp))
             }
         }
     }
 }
 
-/** 아이콘 30개 중에서 고르는 시트. 누르면 바로 바뀌고 닫힌다. */
+/**
+ * 아이콘 고르기. 검색 + 첫 칸 ‘자동’(과목명으로 짐작) + 40개, 48 격자 6열.
+ * 누르면 바로 바뀌고 닫힌다. 색은 넣지 않는다.
+ *
+ * @param selected 저장된 키. 빈 값이면 ‘자동’.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun IconPickerSheet(
-    subject: String,
     selected: String,
     onDismiss: () -> Unit,
     onPick: (String) -> Unit,
 ) {
     val c = MaterialTheme.colorScheme
-    val guessed = CourseIcons.guess(subject)
+    var query by remember { mutableStateOf("") }
+    val labels = CourseIcons.all.associate { it.key to iconLabel(it.key) }
+    val results = CourseIcons.search(query) { labels[it.key].orEmpty() }
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = c.surfaceContainerLow,
     ) {
-        Column(
-            Modifier
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp)
-                .navigationBarsPadding()
-                .padding(bottom = 24.dp),
-        ) {
-            Row(Modifier.padding(start = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(stringResource(R.string.course_icon_title), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-                // 빈 값으로 돌리면 다시 이름을 따라간다.
-                TextButton(onClick = { onPick("") }) { Text(stringResource(R.string.course_icon_auto)) }
-            }
+        Column(Modifier.navigationBarsPadding()) {
             Text(
-                if (subject.isBlank()) stringResource(R.string.course_icon_hint_blank)
-                else stringResource(R.string.course_icon_hint, subject.trim()),
-                style = MaterialTheme.typography.bodyMedium,
-                color = c.onSurfaceVariant,
-                modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 2.dp, bottom = 16.dp),
+                stringResource(R.string.course_icon_title),
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.padding(start = 24.dp, end = 24.dp, bottom = 16.dp),
             )
-            Surface(color = AppTheme.colors.group, shape = MaterialTheme.shapes.large) {
-                Column(
-                    Modifier.padding(12.dp).selectableGroup(),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    CourseIcons.all.chunked(6).forEach { row ->
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            row.forEach { icon ->
-                                val on = icon.key == selected
-                                val label = iconLabel(icon.key)
-                                Box(
-                                    Modifier
-                                        .weight(1f)
-                                        .height(52.dp)
-                                        .clip(MaterialTheme.shapes.large)
-                                        .then(if (on) Modifier.border(2.dp, c.primary, MaterialTheme.shapes.large) else Modifier)
-                                        .selectable(selected = on, role = Role.RadioButton) { onPick(icon.key) }
-                                        .semantics { contentDescription = label },
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    if (on) {
-                                        CourseIconTile(icon, size = 52.dp, container = c.primaryContainer, content = c.onPrimaryContainer)
-                                    } else {
-                                        Icon(
-                                            icon.vector,
-                                            contentDescription = null,
-                                            tint = if (icon == guessed) c.primary else c.onSurfaceVariant,
-                                            modifier = Modifier.size(26.dp),
-                                        )
-                                    }
-                                }
-                            }
-                        }
+            TextField(
+                value = query,
+                onValueChange = { query = it },
+                placeholder = { Text(stringResource(R.string.course_icon_search)) },
+                leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
+                singleLine = true,
+                shape = CircleShape,
+                colors = TextFieldDefaults.colors(
+                    focusedContainerColor = c.surfaceContainerHigh,
+                    unfocusedContainerColor = c.surfaceContainerHigh,
+                    focusedIndicatorColor = Color.Transparent,
+                    unfocusedIndicatorColor = Color.Transparent,
+                ),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            )
+            if (results.isEmpty()) {
+                Text(
+                    stringResource(R.string.course_icon_none),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = c.onSurfaceVariant,
+                    modifier = Modifier.padding(24.dp),
+                )
+            }
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(6),
+                contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth().height(440.dp),
+            ) {
+                if (query.isBlank()) {
+                    item(key = "auto") {
+                        IconCell(
+                            vector = Icons.Rounded.AutoAwesome,
+                            label = stringResource(R.string.course_icon_auto),
+                            selected = selected.isBlank(),
+                            neutralFill = true,
+                        ) { onPick("") }
                     }
+                }
+                items(results, key = { it.key }) { icon ->
+                    IconCell(
+                        vector = icon.vector,
+                        label = labels[icon.key].orEmpty(),
+                        selected = icon.key == selected,
+                        neutralFill = false,
+                    ) { onPick(icon.key) }
                 }
             }
         }
     }
 }
 
-/** 화면 낭독기가 읽을 아이콘 이름. */
+/** 48 칸. 고른 것은 primaryContainer 로 채우고 모서리를 16으로 각지게(M3E 토글 모양). */
+@Composable
+private fun IconCell(
+    vector: ImageVector,
+    label: String,
+    selected: Boolean,
+    neutralFill: Boolean,
+    onClick: () -> Unit,
+) {
+    val c = MaterialTheme.colorScheme
+    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        Surface(
+            onClick = onClick,
+            shape = if (selected) MaterialTheme.shapes.large else CircleShape,
+            color = when {
+                selected -> c.primaryContainer
+                neutralFill -> c.surfaceContainerHigh
+                else -> Color.Transparent
+            },
+            contentColor = if (selected) c.onPrimaryContainer else c.onSurfaceVariant,
+            modifier = Modifier.size(48.dp).semantics {
+                contentDescription = label
+                role = Role.RadioButton
+                this.selected = selected
+            },
+        ) {
+            Box(contentAlignment = Alignment.Center) { Icon(vector, contentDescription = null) }
+        }
+    }
+}
+
+/** 화면 낭독기와 검색이 쓰는 아이콘 이름. */
 @Composable
 private fun iconLabel(key: String): String = stringResource(
     when (key) {
@@ -160,22 +203,30 @@ private fun iconLabel(key: String): String = stringResource(
         "functions" -> R.string.icon_functions
         "calculate" -> R.string.icon_calculate
         "stats" -> R.string.icon_stats
+        "savings" -> R.string.icon_savings
         "code" -> R.string.icon_code
         "computer" -> R.string.icon_computer
         "memory" -> R.string.icon_memory
+        "electric" -> R.string.icon_electric
         "science" -> R.string.icon_science
         "biotech" -> R.string.icon_biotech
         "eco" -> R.string.icon_eco
+        "agriculture" -> R.string.icon_agriculture
+        "pets" -> R.string.icon_pets
         "medical" -> R.string.icon_medical
         "psychology" -> R.string.icon_psychology
+        "childcare" -> R.string.icon_childcare
+        "groups" -> R.string.icon_groups
         "translate" -> R.string.icon_translate
         "history" -> R.string.icon_history
         "forum" -> R.string.icon_forum
+        "news" -> R.string.icon_news
         "public" -> R.string.icon_public
         "gavel" -> R.string.icon_gavel
         "bank" -> R.string.icon_bank
         "business" -> R.string.icon_business
         "engineering" -> R.string.icon_engineering
+        "construction" -> R.string.icon_construction
         "architecture" -> R.string.icon_architecture
         "rocket" -> R.string.icon_rocket
         "palette" -> R.string.icon_palette
@@ -183,6 +234,8 @@ private fun iconLabel(key: String): String = stringResource(
         "camera" -> R.string.icon_camera
         "theater" -> R.string.icon_theater
         "music" -> R.string.icon_music
+        "piano" -> R.string.icon_piano
+        "food" -> R.string.icon_food
         else -> R.string.icon_sports
     }
 )

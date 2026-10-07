@@ -27,6 +27,7 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.BatterySaver
 import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.EditCalendar
 import androidx.compose.material.icons.rounded.Error
 import androidx.compose.material.icons.rounded.FolderOpen
@@ -42,15 +43,15 @@ import androidx.compose.material.icons.rounded.Verified
 import androidx.compose.material.icons.rounded.VerifiedUser
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -60,7 +61,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -79,6 +79,7 @@ import dev.iruki.classtime.R
 import dev.iruki.classtime.data.RecordingStatus
 import dev.iruki.classtime.data.Session
 import dev.iruki.classtime.data.StandbyState
+import dev.iruki.classtime.service.RecordingService
 import dev.iruki.classtime.ui.common.AppSwitch
 import dev.iruki.classtime.ui.common.CourseIconTile
 import dev.iruki.classtime.ui.common.GroupGap
@@ -100,7 +101,6 @@ import dev.iruki.classtime.util.TimeUtils
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
-import kotlinx.coroutines.launch
 
 @Composable
 fun HomeScreen(
@@ -126,9 +126,6 @@ fun HomeScreen(
     val subjects by vm.subjects.collectAsStateWithLifecycle()
 
     var showSheet by remember { mutableStateOf(false) }
-    var showExtend by remember { mutableStateOf(false) }
-    val snackbar = remember { SnackbarHostState() }
-    val scope = rememberCoroutineScope()
 
     LaunchedEffect(sessions, now / 60_000) { vm.refreshCurrentSubject() }
 
@@ -145,7 +142,6 @@ fun HomeScreen(
     Scaffold(
         containerColor = AppTheme.colors.page,
         contentWindowInsets = WindowInsets.statusBars,
-        snackbarHost = { SnackbarHost(snackbar) },
     ) { inner ->
         LazyColumn(
             Modifier.padding(inner),
@@ -177,7 +173,7 @@ fun HomeScreen(
             item(key = "status") {
                 Box(Modifier.padding(horizontal = ScreenPadding)) {
                     when {
-                        status.active -> RecordingCard(status, now, level, onExtend = { showExtend = true }, onStop = vm::stop)
+                        status.active -> RecordingCard(status, now, level, onExtend = vm::extend, onStop = vm::stop)
                         fixCount > 0 -> AttentionCard(fixCount, next, nowMinute)
                         firstRun -> FirstRunCard(onAddCourse = onAddCourse, onRecordNow = { showSheet = true })
                         hasAnyCourse == true -> ScheduleCard(
@@ -284,20 +280,6 @@ fun HomeScreen(
                 }
             }
         }
-    }
-
-    if (showExtend && status.active && status.plannedEndAt > 0L) {
-        val doneText = stringResource(R.string.extend_done, "%s")
-        ExtendSheet(
-            plannedEndAt = status.plannedEndAt,
-            onDismiss = { showExtend = false },
-            onPick = { minutes ->
-                showExtend = false
-                vm.extend(minutes)
-                val newEnd = maxOf(status.plannedEndAt, System.currentTimeMillis()) + minutes * 60_000L
-                scope.launch { snackbar.showSnackbar(doneText.format(TimeUtils.clockText(newEnd))) }
-            },
-        )
     }
 
     if (showSheet) {
@@ -481,9 +463,11 @@ private fun RecordingCard(
     status: RecordingStatus,
     now: Long,
     level: Int,
-    onExtend: () -> Unit,
+    onExtend: (Int) -> Unit,
     onStop: () -> Unit,
 ) {
+    // 연장 버튼을 누르면 같은 줄이 1·2·3·5·10분 버튼으로 바뀐다. 따로 뜨는 시트는 없다.
+    var extendOpen by remember { mutableStateOf(false) }
     val colors = AppTheme.colors
     val elapsed = (now - status.startedAt).coerceAtLeast(0L)
     // 최근 진폭 몇 개만 기억해 막대로 그린다. 한 번의 조용한 표본에 ‘조용해요’가 깜빡이지 않도록.
@@ -555,34 +539,75 @@ private fun RecordingCard(
             Text(levelText, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 12.dp))
         }
         // 정지와 연장은 카드 안에 둔다. 떠 있는 버튼보다 ‘이 녹음’에 대한 동작이라는 것이 분명하다.
-        Row(
-            Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            if (status.plannedEndAt > 0L) {
-                Button(
-                    onClick = onExtend,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = colors.onRecord.copy(alpha = 0.18f),
-                        contentColor = colors.onRecord,
-                    ),
-                    modifier = Modifier.weight(1f).height(48.dp),
-                ) {
-                    Icon(Icons.Rounded.MoreTime, contentDescription = null, modifier = Modifier.size(20.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text(stringResource(R.string.home_rec_extend))
+        val tonal = ButtonDefaults.buttonColors(
+            containerColor = colors.onRecord.copy(alpha = 0.18f),
+            contentColor = colors.onRecord,
+        )
+        val solid = ButtonDefaults.buttonColors(containerColor = colors.onRecord, contentColor = colors.record)
+        Box(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 8.dp).animateContentSize()) {
+            if (extendOpen && status.plannedEndAt > 0L) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilledIconButton(
+                        onClick = { extendOpen = false },
+                        colors = IconButtonDefaults.filledIconButtonColors(
+                            containerColor = colors.onRecord.copy(alpha = 0.18f),
+                            contentColor = colors.onRecord,
+                        ),
+                        modifier = Modifier.size(56.dp),
+                    ) { Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.home_rec_extend_close)) }
+                    Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                        val choices = RecordingService.EXTEND_CHOICES
+                        choices.forEachIndexed { i, minutes ->
+                            val cd = stringResource(R.string.home_rec_extend_cd, minutes)
+                            Button(
+                                onClick = { onExtend(minutes); extendOpen = false },
+                                colors = solid,
+                                shape = connectedShape(i, choices.size),
+                                contentPadding = PaddingValues(0.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(56.dp)
+                                    .semantics { contentDescription = cd },
+                            ) { Text("+$minutes", style = MaterialTheme.typography.titleSmall) }
+                        }
+                    }
+                }
+            } else {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (status.plannedEndAt > 0L) {
+                        Button(
+                            onClick = { extendOpen = true },
+                            colors = tonal,
+                            modifier = Modifier.weight(1f).height(56.dp),
+                        ) {
+                            Icon(Icons.Rounded.MoreTime, contentDescription = null)
+                            Spacer(Modifier.width(8.dp))
+                            Text(stringResource(R.string.home_rec_extend), style = MaterialTheme.typography.titleMedium)
+                        }
+                    }
+                    Button(
+                        onClick = onStop,
+                        colors = solid,
+                        modifier = Modifier.weight(1f).height(56.dp),
+                    ) {
+                        Icon(Icons.Rounded.Stop, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text(stringResource(R.string.home_fab_stop), style = MaterialTheme.typography.titleMedium)
+                    }
                 }
             }
-            Button(
-                onClick = onStop,
-                colors = ButtonDefaults.buttonColors(containerColor = colors.onRecord, contentColor = colors.record),
-                modifier = Modifier.weight(1f).height(48.dp),
-            ) {
-                Icon(Icons.Rounded.Stop, contentDescription = null, modifier = Modifier.size(20.dp))
-                Spacer(Modifier.width(8.dp))
-                Text(stringResource(R.string.home_fab_stop))
-            }
         }
+    }
+}
+
+/** M3 Expressive 연결 버튼 그룹 모양: 양 끝은 완전 원, 안쪽 모서리는 8. */
+private fun connectedShape(index: Int, count: Int): RoundedCornerShape {
+    val inner = 8.dp
+    val outer = 28.dp
+    return when (index) {
+        0 -> RoundedCornerShape(topStart = outer, bottomStart = outer, topEnd = inner, bottomEnd = inner)
+        count - 1 -> RoundedCornerShape(topStart = inner, bottomStart = inner, topEnd = outer, bottomEnd = outer)
+        else -> RoundedCornerShape(inner)
     }
 }
 

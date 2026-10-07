@@ -53,10 +53,11 @@
     <string name="notif_standby_text">수업 시간이 되면 소리까지 녹음해요</string>
     <string name="notif_until">%1$s까지</string>
     <string name="notif_extend">%1$d분 연장</string>
-    <string name="notif_remind_title">%1$d분 뒤 %2$s</string>
-    <string name="notif_remind_auto_on">자동으로 녹음해요</string>
-    <string name="notif_remind_auto_off">자동 녹음은 꺼져 있어요</string>
-    <string name="notif_remind_auto_unready">앱을 한 번 열어 두면 소리까지 녹음해요</string>
+    <string name="notif_remind_title">%1$s · %2$d분 후</string>
+    <string name="notif_remind_auto_on">자동 녹음</string>
+    <string name="notif_remind_auto_off">자동 녹음 꺼짐</string>
+    <string name="notif_remind_auto_unready">앱을 한 번 열어 주세요</string>
+    <string name="notif_remind_skip">이번엔 녹음 안 함</string>
 
     <!-- 무음 경고 -->
     <string name="notif_silence_title">소리가 들어오지 않아요</string>
@@ -129,13 +130,9 @@
 
     <string name="home_rec_ends_at">%1$s에 멈춰요 · %2$s 남음</string>
     <string name="home_rec_ends_at_extended">%1$s에 멈춰요 · %2$d분 연장함</string>
-    <string name="home_rec_extend">수업 연장</string>
-    <string name="extend_title">수업이 늦게 끝나나요?</string>
-    <string name="extend_body">고른 만큼 더 녹음해요. 연장한 뒤에도 정지를 누르면 바로 멈춰요.</string>
-    <string name="extend_option_cd">%1$d분 연장, %2$s까지</string>
-    <string name="extend_unit_hint">분 · 아래는 새로 멈추는 시각</string>
-    <string name="extend_note">알림에서도 5분 연장을 바로 누를 수 있어요. 다음 수업이 시작되면 연장한 녹음은 그 자리에서 끝나요.</string>
-    <string name="extend_done">%1$s까지 녹음해요</string>
+    <string name="home_rec_extend">연장</string>
+    <string name="home_rec_extend_cd">%1$d분 연장</string>
+    <string name="home_rec_extend_close">연장 닫기</string>
     <string name="home_rec_started_at">%1$s 시작</string>
     <string name="home_rec_level_ok">소리가 잘 들어오고 있어요</string>
     <string name="home_rec_level_quiet">조용해요 · 마이크를 가리지 않았는지 확인해 주세요</string>
@@ -177,15 +174,42 @@
 
     <!-- ===== 설정 ===== -->
     <string name="settings_title">설정</string>
-    <string name="settings_section_auto">자동 녹음</string>
-    <string name="settings_section_storage">저장</string>
+    <string name="settings_section_record">녹음</string>
+    <string name="settings_section_permissions">권한</string>
+    <string name="settings_section_display">화면</string>
+    <string name="settings_section_storage">저장 공간</string>
     <string name="settings_section_about">정보</string>
+    <string name="settings_standby_summary">앱을 닫아도 소리까지 녹음해요</string>
+    <string name="settings_standby_preparing">준비 중 · 이 화면을 잠깐 열어 두세요</string>
+    <string name="settings_reminder">수업 전 알림</string>
+    <string name="settings_reminder_off">끔</string>
+    <string name="settings_reminder_minutes">%1$d분 전</string>
+    <string name="settings_mic">마이크</string>
+    <string name="settings_overlay">다른 앱 위에 표시</string>
     <string name="settings_ok">허용됨</string>
+    <string name="settings_needed">허용 필요</string>
+    <string name="settings_theme">테마</string>
+    <string name="settings_theme_system">시스템</string>
+    <string name="settings_theme_light">라이트</string>
+    <string name="settings_theme_dark">다크</string>
     <string name="settings_storage_location">저장 위치</string>
-    <string name="settings_storage_path">내장 저장소 › Music › %1$s</string>
-    <string name="settings_pc_title">PC로 옮기기</string>
-    <string name="settings_pc_detail">USB 연결 → 파일 전송 → 과목 폴더째 복사</string>
-    <string name="settings_version">버전</string>
+    <string name="settings_storage_path">Music/%1$s</string>
+    <string name="settings_rescan">폴더 다시 검사</string>
+    <string name="settings_rescan_action">검사</string>
+    <string name="settings_rescan_running">검사 중…</string>
+    <string name="settings_rescan_same">목록과 폴더가 같아요</string>
+    <string name="settings_rescan_added">새 녹음 %1$d개를 목록에 넣었어요</string>
+    <string name="settings_rescan_both">새 녹음 %1$d개를 넣고, 없는 녹음 %2$d개를 뺐어요</string>
+    <string name="settings_rescan_removed">없는 녹음 %1$d개를 목록에서 뺐어요</string>
+    <string name="settings_rebuild">녹음으로 시간표 만들기</string>
+    <string name="settings_app_info">앱 정보</string>
+    <string name="settings_version">버전 %1$s</string>
+    <string name="rebuild_title">이렇게 만들까요?</string>
+    <string name="rebuild_found">녹음 %1$d개로 찾았어요</string>
+    <string name="rebuild_none">녹음에서 반복되는 수업을 찾지 못했어요</string>
+    <string name="rebuild_exists">이미 있음</string>
+    <string name="rebuild_apply">%1$d과목 추가</string>
+    <string name="rebuild_done">%1$d과목을 시간표에 넣었어요</string>
 
     <!-- ===== 학기 · 휴강 · 보강 ===== -->
     <string name="term_title">학기 · 휴강 · 보강</string>
@@ -265,7 +289,7 @@
     <string name="course_cd_delete_slot">이 시간 묶음 삭제</string>
     <string name="course_auto_record">자동 녹음</string>
     <string name="course_auto_record_hint">시작하면 녹음하고 끝나면 멈춰요</string>
-    <string name="course_color">색</string>
+    <string name="course_color">시간표 색</string>
     <string name="course_pick_start">시작 시각</string>
     <string name="course_pick_end">끝 시각</string>
     <string name="course_delete_title">%1$s을(를) 지울까요?</string>
@@ -296,24 +320,23 @@
     <string name="recordings_rename_confirm">바꾸기</string>
     <string name="recordings_delete_title">녹음을 지울까요?</string>
     <string name="recordings_delete_body">%1$s\n기기에서 파일이 완전히 지워져요.</string>
-    <string name="recordings_storage_title">저장 위치</string>
-    <string name="recordings_storage_body">내장 저장소 › Music › %1$s › 과목명\nUSB로 PC에 연결하면 이 폴더가 그대로 보여요. 과목 폴더째 복사하세요.</string>
 
     <!-- 플레이어 -->
     <string name="player_cd_back10">10초 뒤로</string>
     <string name="player_cd_forward10">10초 앞으로</string>
-    <string name="player_speed">재생 속도</string>
-    <string name="player_folder">%1$s 폴더</string>
-    <string name="player_meta_auto">%1$s · 자동 녹음 · %2$s</string>
-    <string name="player_meta_manual">%1$s · 수동 녹음 · %2$s</string>
-    <string name="player_mini_meta">%1$s / %2$s · %3$s</string>
+    <string name="player_cd_collapse">재생 화면 접기</string>
+    <string name="player_cd_close">재생 닫기</string>
+    <string name="player_cd_speed">재생 속도 %1$s</string>
+    <string name="player_menu_folder">파일 앱에서 보기</string>
+    <string name="player_meta_auto">%1$s · 자동 녹음</string>
+    <string name="player_meta_manual">%1$s · 수동 녹음</string>
 
     <!-- ===== 과목 아이콘 ===== -->
     <string name="course_icon_cd">아이콘 바꾸기</string>
     <string name="course_icon_title">아이콘</string>
-    <string name="course_icon_auto">이름으로 다시 고르기</string>
-    <string name="course_icon_hint">‘%1$s’에 어울리는 아이콘을 골라 뒀어요. 누르면 바로 바뀌어요.</string>
-    <string name="course_icon_hint_blank">과목명을 쓰면 어울리는 아이콘을 골라 드려요.</string>
+    <string name="course_icon_auto">자동 · 이름으로 고르기</string>
+    <string name="course_icon_search">검색 (예: 수학, 실험)</string>
+    <string name="course_icon_none">맞는 아이콘이 없어요</string>
     <string name="icon_book">책</string>
     <string name="icon_school">학교</string>
     <string name="icon_lightbulb">전구</string>
@@ -344,22 +367,28 @@
     <string name="icon_theater">공연</string>
     <string name="icon_music">음악</string>
     <string name="icon_sports">체육</string>
+    <string name="icon_savings">금융</string>
+    <string name="icon_electric">전기</string>
+    <string name="icon_agriculture">농업</string>
+    <string name="icon_pets">동물</string>
+    <string name="icon_childcare">교육</string>
+    <string name="icon_groups">사회</string>
+    <string name="icon_news">언론</string>
+    <string name="icon_construction">건설</string>
+    <string name="icon_piano">악기</string>
+    <string name="icon_food">식품</string>
 
     <!-- ===== 시각 고르기 ===== -->
     <string name="time_am">오전</string>
     <string name="time_pm">오후</string>
-    <string name="time_hour">시</string>
-    <string name="time_minute">분</string>
-    <string name="time_hour_cd">%1$d시</string>
-    <string name="time_minute_cd">%1$d분</string>
-    <string name="time_pick_keyboard">직접 입력</string>
-    <string name="time_pick_grid">칸으로 고르기</string>
-    <string name="time_pick_odd_minute">5분 단위가 아닌 시각이에요. 그대로 두거나 칸을 눌러 바꿔요.</string>
+    <string name="time_pick_keyboard">키보드로 입력</string>
+    <string name="time_pick_dial">시계로 고르기</string>
 
     <!-- ===== 위젯 ===== -->
     <string name="widget_name">오늘 수업</string>
     <string name="widget_description">지금과 다음 수업, 녹음 상태를 보여 주고 바로 녹음할 수 있어요.</string>
     <string name="widget_today">오늘 · %1$s</string>
+    <string name="widget_title">오늘 수업</string>
     <string name="widget_date_pattern">M월 d일 (E)</string>
     <string name="widget_now">지금 수업</string>
     <string name="widget_next">다음 · %1$s</string>

@@ -303,49 +303,43 @@ fun CourseEditScreen(groupId: String?, onDone: () -> Unit) {
 
             HorizontalDivider(Modifier.padding(top = 8.dp, bottom = 16.dp), color = MaterialTheme.colorScheme.outlineVariant)
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(stringResource(R.string.course_color), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                Text(
-                    stringResource(CourseColors.of(colorSeed).label),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+            Text(stringResource(R.string.course_color), style = MaterialTheme.typography.titleMedium)
+            // 시간표 색. 이름 없이 원만 — 고른 색은 안쪽 체크와 테두리로 알린다(색만으로 구분하지 않게).
             Column(
                 Modifier.fillMaxWidth().padding(top = 12.dp).selectableGroup(),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 CourseColors.palette.chunked(5).forEach { row ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         row.forEach { color ->
                             val selected = color.seed == colorSeed
                             val (bg, fg) = color.tones()
-                            Row(
+                            val label = stringResource(color.label)
+                            Box(
                                 Modifier
-                                    .weight(1f)
-                                    .height(48.dp)
-                                    .then(
-                                        if (selected) Modifier
-                                            .border(2.dp, MaterialTheme.colorScheme.onSurface, MaterialTheme.shapes.medium)
-                                            .padding(3.dp)
-                                        else Modifier
-                                    )
-                                    .clip(MaterialTheme.shapes.small)
-                                    .background(bg)
+                                    .size(48.dp)
+                                    .clip(CircleShape)
                                     .selectable(selected = selected, role = Role.RadioButton) {
                                         colorSeed = color.seed
                                         colorChosen = true
-                                    },
-                                horizontalArrangement = Arrangement.Center,
-                                verticalAlignment = Alignment.CenterVertically,
+                                    }
+                                    .semantics { contentDescription = label },
+                                contentAlignment = Alignment.Center,
                             ) {
-                                if (selected) Icon(Icons.Rounded.Check, contentDescription = null, tint = fg, modifier = Modifier.size(16.dp))
-                                Text(
-                                    stringResource(color.label),
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = fg,
-                                    maxLines = 1,
-                                )
+                                Box(
+                                    Modifier
+                                        .size(40.dp)
+                                        .then(
+                                            if (selected) Modifier
+                                                .border(2.dp, MaterialTheme.colorScheme.onSurface, CircleShape)
+                                                .padding(4.dp)
+                                            else Modifier
+                                        )
+                                        .background(bg, CircleShape),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    if (selected) Icon(Icons.Rounded.Check, contentDescription = null, tint = fg, modifier = Modifier.size(18.dp))
+                                }
                             }
                         }
                     }
@@ -376,8 +370,7 @@ fun CourseEditScreen(groupId: String?, onDone: () -> Unit) {
 
     if (pickIcon) {
         IconPickerSheet(
-            subject = subject,
-            selected = CourseIcons.of(iconKey, subject).key,
+            selected = iconKey,
             onDismiss = { pickIcon = false },
             onPick = { key ->
                 iconKey = key

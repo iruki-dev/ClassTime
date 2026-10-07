@@ -182,6 +182,11 @@ class ScheduleManager @Inject constructor(
         if (repo.ongoingRecording() != null) return
 
         val session = repo.sessionInProgress() ?: return
+        // 수업 전 알림에서 ‘이번엔 녹음 안 함’을 골랐다면 따라잡지도 않는다.
+        val today = LocalDate.now().toEpochDay()
+        val skipKey = session.exceptionId?.let { AppSettings.makeupSkipKey(it, today) }
+            ?: session.courseId?.let { AppSettings.courseSkipKey(it, today) }
+        if (skipKey != null && settings.isSkipped(skipKey)) return
         when {
             session.exceptionId != null -> RecordingService.startMakeup(context, session.exceptionId)
             session.courseId != null -> RecordingService.startAuto(context, session.courseId)

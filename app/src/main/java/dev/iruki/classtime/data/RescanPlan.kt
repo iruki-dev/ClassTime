@@ -16,9 +16,6 @@ data class RescanPlan(
     val missingCandidates: List<Recording>,
 ) {
     companion object {
-        /** 이 비트레이트(bps) 이하면 이미 압축된 파일로 본다. 원본은 96kbps 로 녹음한다. */
-        private const val COMPRESSED_MAX_BPS = 48_000
-
         fun of(
             existing: List<Recording>,
             found: List<RecordingScanner.Found>,
@@ -40,7 +37,6 @@ data class RescanPlan(
                         sizeBytes = f.sizeBytes,
                         auto = false,
                         ongoing = false,
-                        compressed = looksCompressed(f.sizeBytes, f.durationMs),
                     )
                 }
             val foundUris = found.map { it.uri }.toSet()
@@ -49,11 +45,6 @@ data class RescanPlan(
                 !it.ongoing && it.uri !in foundUris && key(it.relativePath, it.fileName) !in foundPaths
             }
             return RescanPlan(add, missing)
-        }
-
-        fun looksCompressed(sizeBytes: Long, durationMs: Long): Boolean {
-            if (durationMs <= 0 || sizeBytes <= 0) return false
-            return sizeBytes * 8 * 1000 / durationMs <= COMPRESSED_MAX_BPS
         }
 
         private fun key(relativePath: String, fileName: String) = relativePath.trimEnd('/') + "/" + fileName

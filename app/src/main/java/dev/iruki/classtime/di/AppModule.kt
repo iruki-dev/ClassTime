@@ -7,7 +7,6 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
-import dev.iruki.classtime.audio.AudioCompressor
 import dev.iruki.classtime.audio.RecordingScanner
 import dev.iruki.classtime.audio.RecordingStorage
 import dev.iruki.classtime.data.AppDatabase
@@ -59,11 +58,6 @@ object AppModule {
     @Singleton
     fun provideRecordingScanner(@ApplicationContext context: Context): RecordingScanner =
         RecordingScanner(context)
-
-    @Provides
-    @Singleton
-    fun provideAudioCompressor(@ApplicationContext context: Context): AudioCompressor =
-        AudioCompressor(context)
 
     @Provides
     @Singleton

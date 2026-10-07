@@ -67,11 +67,10 @@ class MigrationInstrumentedTest {
             dbName, 4, true, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4,
         )
 
-        db.query("SELECT peakAmplitude, compressed FROM recordings").use { c ->
+        db.query("SELECT peakAmplitude FROM recordings").use { c ->
             assertThat(c.moveToFirst()).isTrue()
             // 기존 행은 '측정 안 됨'(-1) 이어야 한다. 0 이면 무음으로 오인된다.
             assertThat(c.getInt(0)).isEqualTo(-1)
-            assertThat(c.getInt(1)).isEqualTo(0)
         }
     }
 }

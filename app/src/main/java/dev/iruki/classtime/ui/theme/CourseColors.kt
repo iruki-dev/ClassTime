@@ -120,9 +120,3 @@ fun CourseColor.tones(): Pair<Color, Color> =
 @ReadOnlyComposable
 fun CourseColor.subTone(): Color =
     if (LocalAppColors.current.isDark) Color(onBlockDark) else Color(blockSub)
-
-/** 칩 앞의 작은 색 사각형처럼, 칸 색을 그대로 보여 줄 때. */
-@Composable
-@ReadOnlyComposable
-fun CourseColor.swatch(): Color =
-    if (LocalAppColors.current.isDark) Color(blockDark) else Color(block)
