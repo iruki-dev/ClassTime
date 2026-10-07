@@ -43,6 +43,15 @@
     <string name="channel_warning_desc">소리가 녹음되지 않는 등 확인이 필요할 때 알려 드려요.</string>
     <string name="channel_reminder_name">수업 알림</string>
     <string name="channel_reminder_desc">수업이 시작되기 전에 알려 드려요.</string>
+    <string name="channel_transcription_name">텍스트 변환</string>
+
+    <!-- ===== AI 텍스트 변환(실험적 기능) · 알림 ===== -->
+    <string name="ai_stage_preparing">나누는 중</string>
+    <string name="ai_stage_transcribing">받아 적는 중</string>
+    <string name="ai_stage_correcting">다듬는 중</string>
+    <string name="ai_notif_done">텍스트 변환이 끝났어요</string>
+    <string name="ai_notif_failed">텍스트 변환을 마치지 못했어요</string>
+    <string name="ai_notif_key">Groq 키를 다시 넣어 주세요</string>
 
     <!-- ===== 녹음 서비스 알림 ===== -->
     <string name="notif_recording_title">녹음 중</string>

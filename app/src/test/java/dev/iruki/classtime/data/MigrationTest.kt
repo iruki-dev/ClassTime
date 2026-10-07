@@ -153,7 +153,7 @@ class MigrationTest {
     }
 
     @Test
-    fun migrate3to4_addsIconWithSafeDefault() = runBlocking {
+    fun migrate3to5_addsIconAndTranscripts() = runBlocking {
         createLegacyDatabase(3, v3Hash, v3Tables) { db ->
             db.execSQL(
                 "INSERT INTO courses (id, groupId, subject, professor, room, dayOfWeek, startMinute, endMinute, autoRecord, colorArgb) " +
@@ -169,6 +169,13 @@ class MigrationTest {
         // 빈 아이콘 = 과목명으로 짐작. 녹음은 그대로 남는다.
         assertThat(db.courseDao().getAll().single().icon).isEmpty()
         assertThat(db.recordingDao().getById(9)!!.peakAmplitude).isEqualTo(1200)
+        // v5: 텍스트 변환 표는 비어서 시작하고, 지워진 녹음의 결과는 치울 수 있다.
+        val transcripts = db.transcriptDao()
+        assertThat(transcripts.pending()).isEmpty()
+        transcripts.upsert(Transcript(recordingId = 9, queuedAt = 1))
+        transcripts.upsert(Transcript(recordingId = 77, queuedAt = 2))
+        assertThat(transcripts.deleteOrphans()).isEqualTo(1)
+        assertThat(transcripts.pending().map { it.recordingId }).containsExactly(9L)
         db.close()
     }
 

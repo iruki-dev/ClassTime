@@ -7,8 +7,8 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [Course::class, Recording::class, Term::class, ScheduleException::class],
-    version = 4,
+    entities = [Course::class, Recording::class, Term::class, ScheduleException::class, Transcript::class],
+    version = 5,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -17,6 +17,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun recordingDao(): RecordingDao
     abstract fun termDao(): TermDao
     abstract fun scheduleExceptionDao(): ScheduleExceptionDao
+    abstract fun transcriptDao(): TranscriptDao
 
     companion object {
         /** 인스턴스 생성은 Hilt(AppModule)가 맡는다. 여기에는 스키마 지식만 둔다. */
@@ -82,6 +83,24 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        val ALL_MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+        /** v4 -> v5: 텍스트 변환(실험적 기능) 작업과 결과. 기존 데이터는 건드리지 않는다. */
+        internal val MIGRATION_4_5_SQL: List<String> = listOf(
+            """CREATE TABLE IF NOT EXISTS `transcripts` (
+                `recordingId` INTEGER NOT NULL, `state` TEXT NOT NULL, `queuedAt` INTEGER NOT NULL,
+                `updatedAt` INTEGER NOT NULL, `correct` INTEGER NOT NULL, `plan` TEXT NOT NULL,
+                `chunksDone` INTEGER NOT NULL, `segments` TEXT NOT NULL, `sectionsDone` INTEGER NOT NULL,
+                `sectionsTotal` INTEGER NOT NULL, `paragraphs` TEXT NOT NULL, `waitUntil` INTEGER NOT NULL,
+                `error` TEXT NOT NULL, `attempts` INTEGER NOT NULL, `speechSeconds` INTEGER NOT NULL,
+                `model` TEXT NOT NULL, PRIMARY KEY(`recordingId`)
+            )""",
+        )
+
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_4_5_SQL.forEach(db::execSQL)
+            }
+        }
+
+        val ALL_MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
     }
 }

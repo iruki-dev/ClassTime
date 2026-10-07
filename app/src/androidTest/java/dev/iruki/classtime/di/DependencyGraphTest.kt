@@ -51,7 +51,7 @@ class DependencyGraphTest {
 
     @Test
     fun databaseOpensAndReportsTheExpectedVersion() {
-        assertThat(database.openHelper.readableDatabase.version).isEqualTo(4)
+        assertThat(database.openHelper.readableDatabase.version).isEqualTo(5)
     }
 
     @Test
