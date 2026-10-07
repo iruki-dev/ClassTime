@@ -3,15 +3,18 @@ package dev.iruki.classtime.ui.timetable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
 import dev.iruki.classtime.data.ClassTimeRepository
 import dev.iruki.classtime.data.Course
+import dev.iruki.classtime.data.ScheduleException
 import dev.iruki.classtime.schedule.ScheduleManager
+import java.time.LocalDate
 import java.util.UUID
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -37,6 +40,44 @@ class TimetableViewModel @Inject constructor(
 
     val courses: StateFlow<List<Course>> = repo.courses
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** 지금 보고 있는 주(월요일 시작)의 휴강·보강. */
+    val weekExceptions: StateFlow<List<ScheduleException>> =
+        combine(repo.exceptions, repo.currentDate) { list, today ->
+            val monday = weekStart(today)
+            val sunday = monday.plusDays(6)
+            list.filter { !it.date.isBefore(monday) && !it.date.isAfter(sunday) }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val today: StateFlow<LocalDate> = repo.currentDate
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), LocalDate.now())
+
+    /** 과목명별 (녹음 수, 총 용량). 수업 상세 시트에 쓴다. */
+    val recordingStats: StateFlow<Map<String, Pair<Int, Long>>> = repo.recordings
+        .map { list ->
+            list.groupBy { it.subject }.mapValues { (_, rows) -> rows.size to rows.sumOf { it.sizeBytes } }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
+
+    /** 과목 전체(모든 교시)의 자동 녹음을 켜고 끈다. */
+    fun setAutoRecord(groupId: String, enabled: Boolean) = viewModelScope.launch(Dispatchers.IO) {
+        repo.coursesInGroup(groupId).forEach { repo.upsertCourse(it.copy(autoRecord = enabled)) }
+        scheduleManager.rescheduleAll()
+    }
+
+    /** 오늘 이후 가장 가까운 이 과목 수업 하루를 휴강으로. 이미 지난 오늘 수업은 건너뛴다. */
+    fun cancelNext(groupId: String, nowMinute: Int, today: LocalDate = LocalDate.now()) =
+        viewModelScope.launch(Dispatchers.IO) {
+            val rows = repo.coursesInGroup(groupId)
+            if (rows.isEmpty()) return@launch
+            val date = (0..7).asSequence()
+                .map { today.plusDays(it.toLong()) }
+                .firstOrNull { d ->
+                    rows.any { it.dayOfWeek == d.dayOfWeek.value && (d != today || it.endMinute > nowMinute) }
+                } ?: return@launch
+            repo.upsertException(ScheduleException.cancel(date, groupId, rows.first().subject))
+            scheduleManager.rescheduleAll()
+        }
 
     suspend fun loadGroup(groupId: String): CourseGroup? =
         repo.coursesInGroup(groupId).takeIf { it.isNotEmpty() }?.toGroup()
@@ -98,5 +139,9 @@ class TimetableViewModel @Inject constructor(
             slots = sortedWith(compareBy({ it.dayOfWeek }, { it.startMinute }))
                 .map { Slot(it.dayOfWeek, it.startMinute, it.endMinute) },
         )
+    }
+
+    companion object {
+        fun weekStart(date: LocalDate): LocalDate = date.minusDays((date.dayOfWeek.value - 1).toLong())
     }
 }

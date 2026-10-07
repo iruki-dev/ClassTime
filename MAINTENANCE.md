@@ -26,6 +26,20 @@ Service / Receiver ──@AndroidEntryPoint────────────�
 | `TimeUtils.fileStamp` 의 `Locale.ROOT` | 기본 로캘을 쓰면 일부 로캘에서 숫자가 비-ASCII 로 찍혀 파일명이 깨진다. |
 | `RecordingStorage.sanitizeSubject` 의 `"기타"` | **일부러 번역하지 않는다.** 파일 시스템 경로에 들어가는 값이라, 로캘이 바뀌면 같은 과목이 두 폴더로 갈라진다. |
 
+### 디자인 시스템 (UI)
+
+화면 코드에서 색·모양·글자 크기를 직접 쓰지 않는다. 토큰은 `ui/theme/` 에 있다.
+
+| 파일 | 내용 | 지킬 것 |
+| --- | --- | --- |
+| `Color.kt` | M3 라이트/다크 스킴 + `AppColors`(page·group·record·caution) | Google material-color-utilities(HCT)로 시드 #3D4FC4 에서 계산한 값. 손으로 고치지 말고 다시 계산한다. 다이내믹 컬러는 의도적으로 끔 — 상태 색(남색=준비, 빨강=녹음, 노랑=확인 필요)은 적록 색각에서도 구분되도록 고른 쌍이라 기기마다 바뀌면 안 된다. |
+| `CourseColors.kt` | 과목 색 8종 + 예전 색 이전 | DB 에는 씨앗 색(ARGB)만 저장. 예전 팔레트 값은 `legacy` 표로 새 색에 대응. 빨강·노랑 계열은 과목 색으로 쓰지 않는다(`CourseColorsTest`). |
+| `Type.kt` / `Shape.kt` | M3 타입 스케일(제목만 600) / 모서리 4·8·12·16·20·28 | 분리형 목록 모서리는 `GroupShapes.at(index, count)`. |
+
+규칙: 진한 빨강 채움은 실제 녹음 중일 때만, 노랑은 밝은 컨테이너로만. 탐색 화면은 `AppTheme.colors.page`
+바탕 + `GroupRow` 묶음, 편집 화면은 `surface` 바탕 + 외곽선 입력. 디자인 원본(조사·토큰·화면)은 PR 본문의
+디자인 캔버스 링크에 있다.
+
 ### 로깅
 
 `android.util.Log` 를 직접 쓰지 말고 `util/AppLog.kt` 를 쓴다.

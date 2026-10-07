@@ -45,6 +45,11 @@ class TermViewModel @Inject constructor(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    /** 과목 묶음 id → 과목 색. 보강 줄의 날짜 타일 색에 쓴다. */
+    val courseColors: StateFlow<Map<String, Int>> = repo.courses
+        .map { list -> list.associate { it.groupId to it.colorArgb } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
+
     fun setTerm(start: LocalDate?, end: LocalDate?) = viewModelScope.launch(Dispatchers.IO) {
         repo.upsertTerm(Term.of(start, end))
         scheduleManager.rescheduleAll()

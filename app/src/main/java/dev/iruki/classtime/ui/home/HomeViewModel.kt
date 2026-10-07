@@ -12,7 +12,10 @@ import dev.iruki.classtime.data.StandbyState
 import dev.iruki.classtime.data.Term
 import dev.iruki.classtime.service.RecordingService
 import dev.iruki.classtime.util.AppSettings
+import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
+import java.time.temporal.ChronoUnit
 import javax.inject.Inject
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,6 +30,9 @@ import kotlinx.coroutines.launch
 /** 홈 화면에 보여줄 학기 상태. */
 enum class TermPhase { BEFORE, DURING, AFTER, NONE }
 
+/** 수동 녹음 시트에서 고를 수 있는 과목. */
+data class SubjectOption(val subject: String, val colorArgb: Int)
+
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     @ApplicationContext private val app: Context,
@@ -38,6 +44,9 @@ class HomeViewModel @Inject constructor(
 
     /** 대기 모드 실제 상태(서비스가 마이크를 쥐고 떠 있는지). */
     val standby: StateFlow<StandbyState> = repo.standby
+
+    /** 녹음 중 마이크 입력 크기. ‘소리가 들어오고 있어요’ 표시용. */
+    val inputLevel: StateFlow<Int> = repo.inputLevel
 
     private val _standbyEnabled = MutableStateFlow(settings.standbyEnabled)
     val standbyEnabled: StateFlow<Boolean> = _standbyEnabled.asStateFlow()
@@ -61,22 +70,46 @@ class HomeViewModel @Inject constructor(
     val todaySessions: StateFlow<List<Session>> = repo.todaySessions
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    val hasAnyCourse: StateFlow<Boolean> = repo.courses
+    /** null 이면 아직 모름(첫 로딩). 빈 시간표 안내가 잠깐 깜빡이지 않게 한다. */
+    val hasAnyCourse: StateFlow<Boolean?> = repo.courses
         .map { it.isNotEmpty() }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /** 시트에서 고를 과목들. 같은 과목의 여러 교시는 하나로. */
+    val subjects: StateFlow<List<SubjectOption>> = repo.courses
+        .map { list ->
+            list.distinctBy { it.groupId }
+                .map { SubjectOption(it.subject, it.colorArgb) }
+                .distinctBy { it.subject }
+                .sortedBy { it.subject }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** 오늘 끝까지 녹음된 과목들. 목록에서 ‘녹음됨’은 실제 파일이 있을 때만 표시한다. */
+    val recordedToday: StateFlow<Set<String>> = combine(repo.recordings, repo.currentDate) { list, date ->
+        val zone = ZoneId.systemDefault()
+        list.filter { !it.ongoing && Instant.ofEpochMilli(it.startedAt).atZone(zone).toLocalDate() == date }
+            .map { it.subject }
+            .toSet()
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
 
     val termPhase: StateFlow<TermPhase> = combine(repo.term, repo.currentDate) { term, date ->
         phaseOf(term, date)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TermPhase.NONE)
 
-    private val _elapsedMs = MutableStateFlow(0L)
-    val elapsedMs = _elapsedMs.asStateFlow()
+    /** 학기 중이면 개강일 기준 몇 주차인지. 개강일이 없으면 null. */
+    val termWeek: StateFlow<Int?> = combine(repo.term, repo.currentDate) { term, date ->
+        weekOf(term, date)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /** 1초마다 갱신되는 지금 시각. 경과 시간·남은 시간·다음 수업 계산에 쓴다. */
+    private val _now = MutableStateFlow(System.currentTimeMillis())
+    val now = _now.asStateFlow()
 
     init {
         viewModelScope.launch {
             while (true) {
-                val s = repo.status.value
-                _elapsedMs.value = if (s.active) System.currentTimeMillis() - s.startedAt else 0L
+                _now.value = System.currentTimeMillis()
                 delay(1_000)
             }
         }
@@ -87,7 +120,7 @@ class HomeViewModel @Inject constructor(
 
     fun refreshCurrentSubject() = viewModelScope.launch {
         // 보강은 과목명이 빈 문자열일 수 있다. 빈 값을 그대로 흘리면 화면에
-        // "지금은 ‘’ 시간입니다" 가 찍히므로 null 로 정규화한다.
+        // 빈 과목명이 찍히므로 null 로 정규화한다.
         _currentSubject.value = repo.currentSession()?.subject?.takeIf { it.isNotBlank() }
     }
 
@@ -102,6 +135,17 @@ class HomeViewModel @Inject constructor(
             term.startDate != null && today.isBefore(term.startDate) -> TermPhase.BEFORE
             term.endDate != null && today.isAfter(term.endDate) -> TermPhase.AFTER
             else -> TermPhase.DURING
+        }
+    }
+
+    companion object {
+        /** 개강일이 속한 주를 1주차로 센다(월요일 시작). 학기 밖이면 null. */
+        fun weekOf(term: Term?, today: LocalDate): Int? {
+            val start = term?.startDate ?: return null
+            if (today.isBefore(start)) return null
+            if (term.endDate != null && today.isAfter(term.endDate)) return null
+            val startMonday = start.minusDays((start.dayOfWeek.value - 1).toLong())
+            return (ChronoUnit.DAYS.between(startMonday, today) / 7 + 1).toInt()
         }
     }
 }

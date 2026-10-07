@@ -1,432 +1,697 @@
 package dev.iruki.classtime.ui.home
 
+import android.text.format.DateFormat
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.BatterySaver
+import androidx.compose.material.icons.rounded.Bedtime
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.EditCalendar
+import androidx.compose.material.icons.rounded.Error
+import androidx.compose.material.icons.rounded.EventNote
+import androidx.compose.material.icons.rounded.FolderOpen
+import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.MicOff
+import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.RadioButtonChecked
+import androidx.compose.material.icons.rounded.Schedule
+import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Stop
+import androidx.compose.material.icons.rounded.Verified
+import androidx.compose.material.icons.rounded.VerifiedUser
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.iruki.classtime.R
-import dev.iruki.classtime.audio.RecordingStorage
+import dev.iruki.classtime.data.RecordingStatus
 import dev.iruki.classtime.data.Session
 import dev.iruki.classtime.data.StandbyState
-import androidx.hilt.navigation.compose.hiltViewModel
+import dev.iruki.classtime.ui.common.AppSwitch
+import dev.iruki.classtime.ui.common.CourseAvatar
+import dev.iruki.classtime.ui.common.GroupGap
+import dev.iruki.classtime.ui.common.GroupRow
+import dev.iruki.classtime.ui.common.IconTile
+import dev.iruki.classtime.ui.common.LargeHeader
+import dev.iruki.classtime.ui.common.RowHeadline
+import dev.iruki.classtime.ui.common.RowSupporting
+import dev.iruki.classtime.ui.common.ScreenPadding
+import dev.iruki.classtime.ui.common.SectionHeader
+import dev.iruki.classtime.ui.common.StatusLabel
+import dev.iruki.classtime.ui.common.formatSpan
+import dev.iruki.classtime.ui.theme.AppTheme
+import dev.iruki.classtime.ui.theme.CourseColors
+import dev.iruki.classtime.util.SetupId
 import dev.iruki.classtime.util.SetupIssue
 import dev.iruki.classtime.util.TimeUtils
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     setupIssues: List<SetupIssue>,
     onResolveIssue: (SetupIssue) -> Unit,
     onOpenTimetable: () -> Unit,
+    onAddCourse: () -> Unit,
+    onOpenSettings: () -> Unit,
 ) {
     val vm: HomeViewModel = hiltViewModel()
     val status by vm.status.collectAsStateWithLifecycle()
-    val elapsed by vm.elapsedMs.collectAsStateWithLifecycle()
-    val todaySessions by vm.todaySessions.collectAsStateWithLifecycle()
+    val now by vm.now.collectAsStateWithLifecycle()
+    val level by vm.inputLevel.collectAsStateWithLifecycle()
+    val sessions by vm.todaySessions.collectAsStateWithLifecycle()
     val currentSubject by vm.currentSubject.collectAsStateWithLifecycle()
     val hasAnyCourse by vm.hasAnyCourse.collectAsStateWithLifecycle()
     val termPhase by vm.termPhase.collectAsStateWithLifecycle()
+    val termWeek by vm.termWeek.collectAsStateWithLifecycle()
     val standby by vm.standby.collectAsStateWithLifecycle()
     val standbyEnabled by vm.standbyEnabled.collectAsStateWithLifecycle()
     val hasAutoCourse by vm.hasAutoCourse.collectAsStateWithLifecycle()
+    val recordedToday by vm.recordedToday.collectAsStateWithLifecycle()
+    val subjects by vm.subjects.collectAsStateWithLifecycle()
 
-    var askLabel by remember { mutableStateOf(false) }
-    var labelText by remember { mutableStateOf("") }
+    var showSheet by remember { mutableStateOf(false) }
 
-    LaunchedEffect(todaySessions) { vm.refreshCurrentSubject() }
+    LaunchedEffect(sessions, now / 60_000) { vm.refreshCurrentSubject() }
 
-    Scaffold(topBar = { TopAppBar(title = { Text("ClassTime") }) }) { inner ->
-        Column(
-            Modifier
-                .padding(inner)
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            // --- 설정 점검 ---
-            setupIssues.forEach { issue ->
-                SetupIssueCard(issue = issue, onAction = { onResolveIssue(issue) })
-            }
-            if (hasAutoCourse) {
-                StandbyCard(
-                    enabled = standbyEnabled,
-                    state = standby,
-                    onToggle = vm::setStandbyEnabled,
-                )
-            }
-            if (!hasAnyCourse) {
-                WarningCard(
-                    text = stringResource(R.string.home_empty_timetable),
-                    actionLabel = stringResource(R.string.home_empty_timetable_action),
-                    onAction = onOpenTimetable,
-                )
-            }
-            when (termPhase) {
-                TermPhase.BEFORE -> InfoCard(stringResource(R.string.home_term_before))
-                TermPhase.AFTER -> InfoCard(stringResource(R.string.home_term_after))
-                else -> Unit
-            }
+    // ‘다른 앱 위에 표시’는 보조 수단이라 홈에서 할 일로 올리지 않는다(설정 화면에만).
+    val fixes = setupIssues.filter { it.id != SetupId.BACKGROUND_MIC }
+    val standbyFix = hasAutoCourse && !standbyEnabled
+    val fixCount = fixes.size + if (standbyFix) 1 else 0
+    val micIssue = setupIssues.firstOrNull { it.id == SetupId.MICROPHONE }
+    val firstRun = hasAnyCourse == false
+    val nowMinute = minuteOfDay(now)
+    val next = sessions.firstOrNull { it.startMinute > nowMinute }
+    val inClass = sessions.firstOrNull { nowMinute in it.startMinute until it.endMinute }
 
-            // --- 녹음 버튼 ---
-            RecordButton(
-                active = status.active,
-                onClick = {
-                    if (status.active) {
-                        vm.stop()
-                    } else if (currentSubject != null) {
-                        vm.startManual(null)
-                    } else {
-                        labelText = ""
-                        askLabel = true
-                    }
-                },
-            )
-
-            // 위임 프로퍼티(currentSubject)는 스마트 캐스트가 되지 않아 지역 변수로 받는다.
-            val subjectNow = currentSubject
-            Text(
-                text = when {
-                    status.active && status.auto -> stringResource(
-                        R.string.home_status_auto_recording,
-                        status.subject,
-                        TimeUtils.formatDuration(elapsed),
-                    )
-                    status.active -> stringResource(
-                        R.string.home_status_recording,
-                        status.subject,
-                        TimeUtils.formatDuration(elapsed),
-                    )
-                    subjectNow != null ->
-                        stringResource(R.string.home_status_in_class, subjectNow)
-                    else -> stringResource(R.string.home_status_off_schedule)
-                },
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.fillMaxWidth(),
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-
-            // --- 오늘의 수업 ---
-            Text(
-                stringResource(
-                    R.string.home_today_header,
-                    TimeUtils.dayNameFull(TimeUtils.todayDowValue()),
-                ),
-                style = MaterialTheme.typography.titleMedium,
-            )
-
-            if (todaySessions.isEmpty()) {
-                Text(
-                    if (termPhase == TermPhase.DURING || termPhase == TermPhase.NONE) {
-                        stringResource(R.string.home_no_class_today)
-                    } else {
-                        stringResource(R.string.home_not_in_term)
+    Scaffold(
+        containerColor = AppTheme.colors.page,
+        contentWindowInsets = WindowInsets.statusBars,
+        floatingActionButton = {
+            if (!firstRun || status.active) {
+                RecordFab(
+                    recording = status.active,
+                    onClick = {
+                        when {
+                            status.active -> vm.stop()
+                            micIssue != null -> onResolveIssue(micIssue)
+                            currentSubject != null -> vm.startManual(null)
+                            else -> showSheet = true
+                        }
                     },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-            } else {
-                val nowMin = TimeUtils.nowMinuteOfDay()
-                todaySessions.forEach { session ->
-                    TodaySessionRow(session = session, nowMinute = nowMin)
-                }
             }
-
-            Spacer(Modifier.height(4.dp))
-            Card(colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant
-            )) {
-                Column(Modifier.padding(14.dp)) {
-                    Text(
-                        stringResource(R.string.home_storage_title),
-                        style = MaterialTheme.typography.titleSmall,
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        stringResource(R.string.home_storage_path, RecordingStorage.ROOT),
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        stringResource(R.string.home_storage_hint),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-        }
-    }
-
-    if (askLabel) {
-        AlertDialog(
-            onDismissRequest = { askLabel = false },
-            title = { Text(stringResource(R.string.home_ask_label_title)) },
-            text = {
-                Column {
-                    Text(
-                        stringResource(
-                            R.string.home_ask_label_body,
-                            stringResource(R.string.subject_unknown),
-                        ),
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                    Spacer(Modifier.height(12.dp))
-                    OutlinedTextField(
-                        value = labelText,
-                        onValueChange = { labelText = it },
-                        label = { Text(stringResource(R.string.home_ask_label_field)) },
-                        singleLine = true,
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    vm.startManual(labelText.trim().ifBlank { null })
-                    askLabel = false
-                }) { Text(stringResource(R.string.home_ask_label_start)) }
-            },
-            dismissButton = {
-                TextButton(onClick = { askLabel = false }) {
-                    Text(stringResource(R.string.action_cancel))
-                }
-            },
-        )
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun RecordButton(active: Boolean, onClick: () -> Unit) {
-    val bg = if (active) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-        Surface(
-            onClick = onClick,
-            shape = CircleShape,
-            color = bg,
-            modifier = Modifier.size(140.dp),
+        },
+    ) { inner ->
+        LazyColumn(
+            Modifier.padding(inner),
+            contentPadding = PaddingValues(bottom = 96.dp),
         ) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(
-                    imageVector = if (active) Icons.Filled.Stop else Icons.Filled.Mic,
-                    contentDescription = stringResource(
-                        if (active) R.string.home_cd_stop_recording
-                        else R.string.home_cd_start_recording
-                    ),
-                    tint = Color.White,
-                    modifier = Modifier.size(56.dp),
+            item(key = "header") {
+                LargeHeader(
+                    title = stringResource(R.string.home_title),
+                    subtitle = dateSubtitle(termWeek),
+                ) {
+                    IconButton(onClick = onOpenSettings) {
+                        Icon(Icons.Rounded.Settings, contentDescription = stringResource(R.string.home_cd_settings))
+                    }
+                }
+            }
+
+            item(key = "status") {
+                Box(Modifier.padding(horizontal = ScreenPadding)) {
+                    when {
+                        status.active -> RecordingCard(status, now, level)
+                        fixCount > 0 -> AttentionCard(fixCount, next, nowMinute)
+                        firstRun -> FirstRunCard(onAddCourse = onAddCourse, onRecordNow = { showSheet = true })
+                        hasAnyCourse == true -> ScheduleCard(
+                            inClass = inClass,
+                            next = next,
+                            nowMinute = nowMinute,
+                            sessionsToday = sessions.size,
+                            termPhase = termPhase,
+                            showStandby = hasAutoCourse,
+                            standby = standby,
+                            standbyEnabled = standbyEnabled,
+                            onOpenSettings = onOpenSettings,
+                        )
+                        else -> Unit
+                    }
+                }
+            }
+
+            if (!status.active && fixCount > 0) {
+                item(key = "fix_header") {
+                    SectionHeader(
+                        stringResource(R.string.home_fix_header),
+                        Modifier.padding(start = ScreenPadding, end = ScreenPadding, top = 16.dp),
+                    )
+                }
+                val rows = buildList<@Composable (Int, Int) -> Unit> {
+                    if (standbyFix) add { i, n ->
+                        FixRow(
+                            index = i, count = n,
+                            icon = Icons.Rounded.Mic,
+                            title = stringResource(R.string.home_standby_title),
+                            detail = stringResource(R.string.home_standby_detail),
+                        ) { AppSwitch(checked = false, onCheckedChange = vm::setStandbyEnabled) }
+                    }
+                    fixes.forEach { issue ->
+                        add { i, n ->
+                            FixRow(
+                                index = i, count = n,
+                                icon = issueIcon(issue.id),
+                                title = stringResource(issue.title),
+                                detail = stringResource(issue.detail),
+                            ) {
+                                FilledTonalButton(onClick = { onResolveIssue(issue) }) {
+                                    Text(stringResource(issue.actionLabel))
+                                }
+                            }
+                        }
+                    }
+                }
+                itemsIndexed(rows, key = { i, _ -> "fix_$i" }) { i, row ->
+                    Box(Modifier.padding(horizontal = ScreenPadding, vertical = GroupGap / 2)) { row(i, rows.size) }
+                }
+            }
+
+            if (firstRun) {
+                item(key = "how_header") {
+                    SectionHeader(
+                        stringResource(R.string.home_how_header),
+                        Modifier.padding(start = ScreenPadding, end = ScreenPadding, top = 16.dp),
+                    )
+                }
+                val steps = listOf(
+                    Triple(Icons.Rounded.EditCalendar, R.string.home_how_1_title, R.string.home_how_1_body),
+                    Triple(Icons.Rounded.Mic, R.string.home_how_2_title, R.string.home_how_2_body),
+                    Triple(Icons.Rounded.FolderOpen, R.string.home_how_3_title, R.string.home_how_3_body),
+                )
+                itemsIndexed(steps, key = { i, _ -> "how_$i" }) { i, (icon, title, body) ->
+                    GroupRow(
+                        index = i, count = steps.size,
+                        modifier = Modifier.padding(horizontal = ScreenPadding, vertical = GroupGap / 2),
+                        leading = {
+                            IconTile(icon, MaterialTheme.colorScheme.secondaryContainer, MaterialTheme.colorScheme.onSecondaryContainer)
+                        },
+                        supporting = { RowSupporting(stringResource(body)) },
+                    ) { RowHeadline(stringResource(title)) }
+                }
+            } else if (sessions.isNotEmpty()) {
+                item(key = "today_header") {
+                    SectionHeader(
+                        stringResource(R.string.home_today_header, sessions.size),
+                        Modifier.padding(start = ScreenPadding, end = 8.dp, top = 16.dp),
+                    ) {
+                        TextButton(onClick = onOpenTimetable) {
+                            Text(stringResource(R.string.home_open_timetable))
+                            Icon(
+                                Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
+                    }
+                }
+                itemsIndexed(sessions, key = { i, s -> "s_${i}_${s.startMinute}_${s.subject}" }) { i, s ->
+                    SessionRow(
+                        session = s,
+                        index = i,
+                        count = sessions.size,
+                        nowMinute = nowMinute,
+                        isNext = s == next,
+                        recordingThis = status.active && status.subject == s.subject &&
+                            nowMinute in s.startMinute..s.endMinute,
+                        recorded = s.subject in recordedToday,
+                    )
+                }
+            }
+        }
+    }
+
+    if (showSheet) {
+        RecordSheet(
+            subjects = subjects,
+            onDismiss = { showSheet = false },
+            onStart = { subject ->
+                showSheet = false
+                if (micIssue != null) onResolveIssue(micIssue) else vm.startManual(subject)
+            },
+        )
+    }
+}
+
+// --- 머리 ---
+
+@Composable
+private fun dateSubtitle(week: Int?): String {
+    val locale = Locale.getDefault()
+    val pattern = remember(locale) { DateFormat.getBestDateTimePattern(locale, "MMMMdEEEE") }
+    val date = LocalDate.now().format(DateTimeFormatter.ofPattern(pattern, locale))
+    return if (week != null) stringResource(R.string.home_subtitle_week, date, week)
+    else stringResource(R.string.home_subtitle_date, date)
+}
+
+// --- 상태 카드 ---
+
+/** 상태 카드 공통 틀: 모서리 28, 안쪽 여백 20, 상태 줄 → 본문. */
+@Composable
+private fun StatusCard(
+    container: Color,
+    content: Color,
+    accent: Color,
+    icon: ImageVector,
+    label: String,
+    modifier: Modifier = Modifier,
+    body: @Composable () -> Unit,
+) {
+    Surface(
+        color = container,
+        contentColor = content,
+        shape = MaterialTheme.shapes.extraLarge,
+        modifier = modifier.fillMaxWidth().animateContentSize(),
+    ) {
+        Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(icon, contentDescription = null, tint = accent)
+                Text(label, style = MaterialTheme.typography.titleMedium, color = accent)
+            }
+            body()
+        }
+    }
+}
+
+@Composable
+private fun ScheduleCard(
+    inClass: Session?,
+    next: Session?,
+    nowMinute: Int,
+    sessionsToday: Int,
+    termPhase: TermPhase,
+    showStandby: Boolean,
+    standby: StandbyState,
+    standbyEnabled: Boolean,
+    onOpenSettings: () -> Unit,
+) {
+    val focus = inClass ?: next
+    if (focus == null || termPhase == TermPhase.BEFORE || termPhase == TermPhase.AFTER) {
+        IdleCard(sessionsToday, termPhase)
+        return
+    }
+    val ready = !showStandby || standby.readyForSilentFreeRecording
+    val c = MaterialTheme.colorScheme
+    StatusCard(
+        container = c.primaryContainer,
+        content = c.onPrimaryContainer,
+        accent = c.onPrimaryContainer,
+        icon = Icons.Rounded.Verified,
+        label = stringResource(if (ready) R.string.home_state_ready else R.string.home_state_preparing),
+    ) {
+        Column(Modifier.padding(top = 20.dp, bottom = 16.dp)) {
+            Text(
+                if (inClass != null) stringResource(R.string.home_now_label, TimeUtils.minuteToText(inClass.endMinute))
+                else stringResource(R.string.home_next_label, formatSpan(focus.startMinute - nowMinute)),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Text(
+                focus.displaySubject(),
+                style = MaterialTheme.typography.headlineMedium,
+            )
+            Text(
+                focus.timeAndRoom(),
+                style = MaterialTheme.typography.bodyLarge,
+            )
+            if (inClass != null && !inClass.autoRecord) {
+                Text(
+                    stringResource(R.string.home_in_class_auto_off),
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(top = 4.dp),
                 )
             }
         }
-    }
-}
-
-@Composable
-private fun TodaySessionRow(session: Session, nowMinute: Int) {
-    val inProgress = nowMinute in session.startMinute..session.endMinute
-    val done = nowMinute > session.endMinute
-
-    Row(
-        Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Box(
-            Modifier
-                .size(width = 4.dp, height = 36.dp)
-                .clip(CircleShape)
-                .background(Color(session.colorArgb))
-        )
-        Column(Modifier.weight(1f)) {
-            Text(
-                // 보강은 과목명이 비어 있을 수 있다. 그때는 '보강' 자체를 이름으로 쓴다.
-                text = if (session.subject.isBlank()) {
-                    stringResource(R.string.subject_makeup)
-                } else {
-                    session.subject + if (session.isMakeup) {
+        if (showStandby && standbyEnabled) {
+            HorizontalDivider(color = c.onPrimaryContainer.copy(alpha = 0.16f))
+            Surface(
+                onClick = onOpenSettings,
+                color = Color.Transparent,
+                contentColor = c.onPrimaryContainer,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Icon(Icons.Rounded.VerifiedUser, contentDescription = null, modifier = Modifier.size(20.dp))
+                    Text(
                         stringResource(
-                            R.string.home_session_makeup_suffix,
-                            stringResource(R.string.subject_makeup),
-                        )
-                    } else ""
-                },
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = if (inProgress) FontWeight.Bold else FontWeight.Normal,
-                color = if (done) MaterialTheme.colorScheme.onSurfaceVariant
-                        else MaterialTheme.colorScheme.onSurface,
-            )
-            Text(
-                text = "${TimeUtils.minuteToText(session.startMinute)}–${TimeUtils.minuteToText(session.endMinute)}" +
-                    (if (session.room.isNotBlank()) " · ${session.room}" else ""),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        Text(
-            text = when {
-                inProgress -> stringResource(R.string.home_session_in_progress)
-                !session.autoRecord -> stringResource(R.string.home_session_auto_off)
-                done -> stringResource(R.string.home_session_done)
-                else -> stringResource(R.string.home_session_scheduled)
-            },
-            style = MaterialTheme.typography.labelMedium,
-            color = if (inProgress) MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-}
-
-@Composable
-private fun InfoCard(text: String) {
-    Card(
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.secondaryContainer
-        ),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Text(
-            text,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSecondaryContainer,
-            modifier = Modifier.padding(14.dp),
-        )
-    }
-}
-
-/**
- * 대기 모드 카드.
- *
- * 안드로이드는 녹음 서비스가 포그라운드로 올라오는 **그 순간** 앱이 화면에 있었는지로
- * 마이크 접근 권한을 고정한다. 수업 시간 알람은 백그라운드에서 울리므로, 앱이 열려 있는
- * 동안 미리 서비스를 띄워 권한을 잡아 두는 것이 자동 녹음에 소리가 들어오는 유일한 방법이다.
- */
-@Composable
-private fun StandbyCard(enabled: Boolean, state: StandbyState, onToggle: (Boolean) -> Unit) {
-    val ready = enabled && state.readyForSilentFreeRecording
-    val container = if (ready) MaterialTheme.colorScheme.secondaryContainer
-    else MaterialTheme.colorScheme.errorContainer
-    val onContainer = if (ready) MaterialTheme.colorScheme.onSecondaryContainer
-    else MaterialTheme.colorScheme.onErrorContainer
-
-    Card(
-        colors = CardDefaults.cardColors(containerColor = container),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(Modifier.padding(14.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        when {
-                            ready -> stringResource(R.string.home_standby_on)
-                            enabled -> stringResource(R.string.home_standby_preparing)
-                            else -> stringResource(R.string.home_standby_off)
-                        },
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = onContainer,
+                            if (standby.readyForSilentFreeRecording) R.string.home_standby_line_on
+                            else R.string.home_standby_line_preparing
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.weight(1f).padding(vertical = 12.dp),
                     )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        when {
-                            ready -> stringResource(R.string.home_standby_on_detail)
-                            enabled -> stringResource(R.string.home_standby_preparing_detail)
-                            else -> stringResource(R.string.home_standby_off_detail)
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = onContainer,
-                    )
+                    Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, modifier = Modifier.size(20.dp))
                 }
-                Spacer(Modifier.size(8.dp))
-                Switch(checked = enabled, onCheckedChange = onToggle)
+            }
+        } else {
+            Spacer(Modifier.height(4.dp))
+        }
+    }
+}
+
+@Composable
+private fun IdleCard(sessionsToday: Int, termPhase: TermPhase) {
+    val c = MaterialTheme.colorScheme
+    val (title, detail) = when (termPhase) {
+        TermPhase.BEFORE -> stringResource(R.string.home_idle_before_term) to null
+        TermPhase.AFTER -> stringResource(R.string.home_idle_after_term) to stringResource(R.string.home_idle_after_term_detail)
+        else -> stringResource(if (sessionsToday > 0) R.string.home_idle_done else R.string.home_idle_none) to null
+    }
+    StatusCard(
+        container = AppTheme.colors.group,
+        content = c.onSurface,
+        accent = c.onSurfaceVariant,
+        icon = Icons.Rounded.Bedtime,
+        label = stringResource(R.string.home_state_idle),
+    ) {
+        Column(Modifier.padding(top = 12.dp, bottom = 12.dp)) {
+            Text(title, style = MaterialTheme.typography.headlineSmall)
+            if (detail != null) {
+                Text(detail, style = MaterialTheme.typography.bodyMedium, color = c.onSurfaceVariant)
             }
         }
     }
 }
 
 @Composable
-private fun WarningCard(text: String, actionLabel: String, onAction: () -> Unit) {
-    Card(
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.secondaryContainer
-        ),
-        modifier = Modifier.fillMaxWidth(),
+private fun AttentionCard(count: Int, next: Session?, nowMinute: Int) {
+    val colors = AppTheme.colors
+    StatusCard(
+        container = colors.cautionContainer,
+        content = colors.onCautionContainer,
+        accent = colors.caution,
+        icon = Icons.Rounded.Error,
+        label = stringResource(R.string.home_state_attention),
     ) {
-        Column(Modifier.padding(14.dp)) {
+        Column(Modifier.padding(top = 16.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(stringResource(R.string.home_attention_title, count), style = MaterialTheme.typography.headlineSmall)
             Text(
-                text,
+                if (next != null) stringResource(
+                    R.string.home_attention_next,
+                    next.displaySubject(),
+                    formatSpan(next.startMinute - nowMinute),
+                ) else stringResource(R.string.home_attention_no_next),
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                color = colors.caution,
             )
-            Spacer(Modifier.height(8.dp))
-            FilledTonalButton(onClick = onAction) { Text(actionLabel) }
         }
     }
 }
 
-/**
- * 설정 점검 카드. 심각한 항목(마이크 차단 등)은 오류 색으로, 나머지는 보통 색으로 보여준다.
- */
 @Composable
-private fun SetupIssueCard(issue: SetupIssue, onAction: () -> Unit) {
-    val container = if (issue.critical) MaterialTheme.colorScheme.errorContainer
-    else MaterialTheme.colorScheme.surfaceVariant
-    val onContainer = if (issue.critical) MaterialTheme.colorScheme.onErrorContainer
-    else MaterialTheme.colorScheme.onSurfaceVariant
+private fun RecordingCard(status: RecordingStatus, now: Long, level: Int) {
+    val colors = AppTheme.colors
+    val elapsed = (now - status.startedAt).coerceAtLeast(0L)
+    // 최근 진폭 몇 개만 기억해 막대로 그린다. 한 번의 조용한 표본에 ‘조용해요’가 깜빡이지 않도록.
+    val recent = remember { mutableStateListOf<Int>() }
+    LaunchedEffect(level) {
+        recent.add(level)
+        while (recent.size > 10) recent.removeAt(0)
+    }
+    val quiet = elapsed > 8_000 && (recent.maxOrNull() ?: 0) < QUIET_LEVEL
 
-    Card(
-        colors = CardDefaults.cardColors(containerColor = container),
-        modifier = Modifier.fillMaxWidth(),
+    StatusCard(
+        container = colors.record,
+        content = colors.onRecord,
+        accent = colors.onRecord,
+        icon = Icons.Rounded.RadioButtonChecked,
+        label = stringResource(
+            if (status.auto) R.string.home_state_recording_auto else R.string.home_state_recording_manual
+        ),
     ) {
-        Column(Modifier.padding(14.dp)) {
-            Text(
-                stringResource(issue.title),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = onContainer,
+        Text(
+            TimeUtils.formatDuration(elapsed),
+            style = MaterialTheme.typography.displayLarge,
+            modifier = Modifier.padding(top = 12.dp).semantics { liveRegion = LiveRegionMode.Polite },
+        )
+        Text(status.subject, style = MaterialTheme.typography.titleLarge)
+        if (status.plannedEndAt > status.startedAt) {
+            val total = status.plannedEndAt - status.startedAt
+            val remainingMin = ((status.plannedEndAt - now).coerceAtLeast(0) / 60_000).toInt()
+            LinearProgressIndicator(
+                progress = { (elapsed.toFloat() / total).coerceIn(0f, 1f) },
+                color = colors.onRecord,
+                trackColor = colors.onRecord.copy(alpha = 0.3f),
+                modifier = Modifier.fillMaxWidth().padding(top = 20.dp).height(4.dp),
             )
-            Spacer(Modifier.height(4.dp))
-            Text(stringResource(issue.detail), style = MaterialTheme.typography.bodySmall, color = onContainer)
-            Spacer(Modifier.height(8.dp))
-            FilledTonalButton(onClick = onAction) { Text(stringResource(issue.actionLabel)) }
+            Row(Modifier.fillMaxWidth().padding(top = 6.dp)) {
+                Text(
+                    stringResource(R.string.home_rec_started_at, TimeUtils.minuteToText(minuteOfDay(status.startedAt))),
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    stringResource(
+                        R.string.home_rec_ends_at,
+                        TimeUtils.minuteToText(minuteOfDay(status.plannedEndAt)),
+                        formatSpan(remainingMin),
+                    ),
+                    style = MaterialTheme.typography.labelMedium,
+                )
+            }
+        } else {
+            Text(
+                stringResource(R.string.home_rec_manual_detail),
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
+        HorizontalDivider(Modifier.padding(top = 12.dp), color = colors.onRecord.copy(alpha = 0.22f))
+        val levelText = stringResource(if (quiet) R.string.home_rec_level_quiet else R.string.home_rec_level_ok)
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = 48.dp).clearAndSetSemantics { contentDescription = levelText },
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            LevelBars(recent, colors.onRecord)
+            Text(levelText, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 12.dp))
         }
     }
 }
+
+@Composable
+private fun LevelBars(levels: List<Int>, color: Color) {
+    Row(
+        Modifier.height(20.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
+    ) {
+        repeat(10) { i ->
+            val v = levels.getOrNull(levels.size - 10 + i) ?: 0
+            val fraction = (v / 6_000f).coerceIn(0.15f, 1f)
+            Box(
+                Modifier
+                    .width(3.dp)
+                    .height(20.dp * fraction)
+                    .background(color.copy(alpha = if (v > 0) 1f else 0.45f), RoundedCornerShape(2.dp))
+            )
+        }
+    }
+}
+
+@Composable
+private fun FirstRunCard(onAddCourse: () -> Unit, onRecordNow: () -> Unit) {
+    val c = MaterialTheme.colorScheme
+    Surface(color = AppTheme.colors.group, shape = MaterialTheme.shapes.extraLarge, modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 24.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Box(
+                Modifier.size(64.dp).background(c.primaryContainer, RoundedCornerShape(20.dp)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Rounded.EventNote, contentDescription = null, tint = c.onPrimaryContainer, modifier = Modifier.size(32.dp))
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(stringResource(R.string.home_first_title), style = MaterialTheme.typography.headlineSmall)
+                Text(stringResource(R.string.home_first_body), style = MaterialTheme.typography.bodyMedium, color = c.onSurfaceVariant)
+            }
+            Column {
+                Button(
+                    onClick = onAddCourse,
+                    modifier = Modifier.fillMaxWidth().height(56.dp),
+                    contentPadding = ButtonDefaults.ButtonWithIconContentPadding,
+                ) {
+                    Icon(Icons.Rounded.Add, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.home_first_add), style = MaterialTheme.typography.titleMedium)
+                }
+                TextButton(onClick = onRecordNow, modifier = Modifier.fillMaxWidth().height(48.dp)) {
+                    Icon(
+                        Icons.Rounded.RadioButtonChecked,
+                        contentDescription = null,
+                        tint = AppTheme.colors.recordAccent,
+                        modifier = Modifier.size(20.dp),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.home_first_record))
+                }
+            }
+        }
+    }
+}
+
+// --- 목록 ---
+
+@Composable
+private fun FixRow(
+    index: Int,
+    count: Int,
+    icon: ImageVector,
+    title: String,
+    detail: String,
+    action: @Composable () -> Unit,
+) {
+    val colors = AppTheme.colors
+    GroupRow(
+        index = index,
+        count = count,
+        minHeight = 88.dp,
+        leading = { IconTile(icon, colors.cautionContainer, colors.caution) },
+        supporting = { RowSupporting(detail) },
+        trailing = action,
+    ) { RowHeadline(title) }
+}
+
+private fun issueIcon(id: SetupId): ImageVector = when (id) {
+    SetupId.MICROPHONE -> Icons.Rounded.Mic
+    SetupId.NOTIFICATIONS -> Icons.Rounded.Notifications
+    SetupId.EXACT_ALARM -> Icons.Rounded.Schedule
+    SetupId.BACKGROUND_MIC -> Icons.Rounded.VerifiedUser
+    SetupId.BATTERY -> Icons.Rounded.BatterySaver
+}
+
+@Composable
+private fun SessionRow(
+    session: Session,
+    index: Int,
+    count: Int,
+    nowMinute: Int,
+    isNext: Boolean,
+    recordingThis: Boolean,
+    recorded: Boolean,
+) {
+    val c = MaterialTheme.colorScheme
+    val colors = AppTheme.colors
+    val past = nowMinute >= session.endMinute
+    val inProgress = nowMinute in session.startMinute until session.endMinute
+    GroupRow(
+        index = index,
+        count = count,
+        selected = isNext,
+        color = if (recordingThis) colors.recordSubtle else null,
+        modifier = Modifier.padding(horizontal = ScreenPadding, vertical = GroupGap / 2),
+        leading = { CourseAvatar(CourseColors.of(session.colorArgb), session.displaySubject()) },
+        supporting = { RowSupporting(session.timeAndRoom()) },
+        trailing = {
+            when {
+                recordingThis -> StatusLabel(stringResource(R.string.home_session_recording), Icons.Rounded.RadioButtonChecked, colors.onRecordSubtle)
+                recorded && (past || inProgress) -> StatusLabel(stringResource(R.string.home_session_done), Icons.Rounded.CheckCircle, c.primary)
+                inProgress -> StatusLabel(stringResource(R.string.home_session_in_progress), Icons.Rounded.Schedule, c.onSurface)
+                past -> StatusLabel(stringResource(R.string.home_session_past), null, c.onSurfaceVariant)
+                isNext -> StatusLabel(stringResource(R.string.home_session_next), Icons.Rounded.Schedule, c.onSecondaryContainer, AppTheme.colors.group)
+                session.autoRecord -> StatusLabel(stringResource(R.string.home_session_auto), Icons.Rounded.Mic, c.onSurfaceVariant)
+                else -> StatusLabel(stringResource(R.string.home_session_auto_off), Icons.Rounded.MicOff, c.onSurfaceVariant)
+            }
+        },
+    ) {
+        RowHeadline(
+            if (session.isMakeup) stringResource(R.string.home_session_makeup, session.displaySubject())
+            else session.displaySubject()
+        )
+    }
+}
+
+@Composable
+private fun Session.displaySubject(): String =
+    subject.ifBlank { stringResource(R.string.subject_makeup) }
+
+@Composable
+private fun Session.timeAndRoom(): String {
+    val start = TimeUtils.minuteToText(startMinute)
+    val end = TimeUtils.minuteToText(endMinute)
+    return if (room.isNotBlank()) stringResource(R.string.home_session_time_room, start, end, room)
+    else stringResource(R.string.home_session_time, start, end)
+}
+
+@Composable
+private fun RecordFab(recording: Boolean, onClick: () -> Unit) {
+    val colors = AppTheme.colors
+    ExtendedFloatingActionButton(
+        onClick = onClick,
+        containerColor = if (recording) colors.record else colors.recordContainer,
+        contentColor = if (recording) colors.onRecord else colors.onRecordContainer,
+        icon = {
+            Icon(
+                if (recording) Icons.Rounded.Stop else Icons.Rounded.RadioButtonChecked,
+                contentDescription = null,
+                tint = if (recording) colors.onRecord else colors.recordAccent,
+            )
+        },
+        text = { Text(stringResource(if (recording) R.string.home_fab_stop else R.string.home_fab_record)) },
+    )
+}
+
+private fun minuteOfDay(epochMs: Long): Int {
+    val t = java.time.Instant.ofEpochMilli(epochMs).atZone(java.time.ZoneId.systemDefault()).toLocalTime()
+    return t.hour * 60 + t.minute
+}
+
+/** 이보다 작은 진폭만 계속 들어오면 ‘조용해요’로 안내한다(완전한 무음 판정은 서비스가 따로 한다). */
+private const val QUIET_LEVEL = 300

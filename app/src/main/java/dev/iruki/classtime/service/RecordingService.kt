@@ -257,6 +257,7 @@ class RecordingService : Service() {
         val target = storage.create(r.subject, TimeUtils.fileStamp(startedAt))
 
         recorder.onSilenceSuspected = { warnSilence(r.subject) }
+        recorder.onLevel = { repo.updateInputLevel(it) }
         try {
             recorder.start(target.uri)
         } catch (e: Exception) {
@@ -290,7 +291,13 @@ class RecordingService : Service() {
         )
 
         repo.updateStatus(
-            RecordingStatus(active = true, subject = r.subject, auto = r.auto, startedAt = startedAt)
+            RecordingStatus(
+                active = true,
+                subject = r.subject,
+                auto = r.auto,
+                startedAt = startedAt,
+                plannedEndAt = plannedEndAt(startedAt, r.plannedEndMinute),
+            )
         )
         armWatchdog(startedAt, r.plannedEndMinute)
         updateNotification(getString(R.string.notif_recording_subject, r.subject))
@@ -302,6 +309,13 @@ class RecordingService : Service() {
     }
 
     /** 워치독 알람: 계획된 종료 시각 + 유예, 그리고 절대 상한 중 이른 쪽. */
+    /** 오늘 [plannedEndMinute] 시각. 이미 지났거나 없으면 0(화면은 ‘끝 시각 모름’으로 표시). */
+    private fun plannedEndAt(startedAt: Long, plannedEndMinute: Int?): Long =
+        plannedEndMinute
+            ?.let { TimeUtils.millisAt(LocalDate.now(), it) }
+            ?.takeIf { it > startedAt }
+            ?: 0L
+
     private fun armWatchdog(startedAt: Long, plannedEndMinute: Int?) {
         val capAt = startedAt + MAX_RECORDING_MS
         val plannedAt = plannedEndMinute
@@ -350,6 +364,8 @@ class RecordingService : Service() {
         }
         session = null
         recorder.onSilenceSuspected = null
+        recorder.onLevel = null
+        repo.updateInputLevel(0)
 
         val result = runCatching { recorder.stop() }.getOrNull()
         val size = runCatching { storage.finalize(s.uri, s.legacyPath?.let { File(it) }) }

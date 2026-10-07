@@ -30,6 +30,8 @@ data class PlaybackState(
     val playing: Boolean = false,
     val positionMs: Int = 0,
     val durationMs: Int = 0,
+    /** 재생 속도. 복습할 때 1.5배속이 흔하다. */
+    val speed: Float = 1f,
 )
 
 @HiltViewModel
@@ -49,6 +51,19 @@ class RecordingsViewModel @Inject constructor(
                 .map { it.key to it.value.sortedByDescending { r -> r.startedAt } }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** 과목명 → 과목 색(ARGB). 시간표에서 지운 과목은 없을 수 있다. */
+    val subjectColors: StateFlow<Map<String, Int>> = repo.courses
+        .map { list -> list.associate { it.subject to it.colorArgb } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
+
+    /** 과목 칩으로 거르기. null 이면 전체. */
+    private val _filter = MutableStateFlow<String?>(null)
+    val filter = _filter.asStateFlow()
+
+    fun setFilter(subject: String?) {
+        _filter.value = subject
+    }
 
     private val _playback = MutableStateFlow(PlaybackState())
     val playback = _playback.asStateFlow()
@@ -81,6 +96,7 @@ class RecordingsViewModel @Inject constructor(
                 _playback.value = current.copy(playing = false)
             } else {
                 p.start()
+                if (current.speed != 1f) applySpeed(p, current.speed)
                 _playback.value = current.copy(playing = true)
             }
             return
@@ -101,6 +117,7 @@ class RecordingsViewModel @Inject constructor(
     }
 
     private fun tryPlay(recording: Recording): Boolean {
+        val speed = _playback.value.speed
         release()
         return try {
             val p = MediaPlayer().apply {
@@ -110,11 +127,13 @@ class RecordingsViewModel @Inject constructor(
                 start()
             }
             player = p
+            if (speed != 1f) applySpeed(p, speed)
             _playback.value = PlaybackState(
                 recordingId = recording.id,
                 playing = true,
                 positionMs = 0,
                 durationMs = p.duration,
+                speed = speed,
             )
             true
         } catch (e: Exception) {
@@ -122,6 +141,27 @@ class RecordingsViewModel @Inject constructor(
             _playback.value = PlaybackState()
             false
         }
+    }
+
+    /** 지금 위치에서 [deltaMs] 만큼 앞/뒤로. */
+    fun seekBy(deltaMs: Int) {
+        val p = _playback.value
+        if (p.recordingId < 0) return
+        seekTo((p.positionMs + deltaMs).coerceIn(0, p.durationMs.coerceAtLeast(0)))
+    }
+
+    fun setSpeed(speed: Float) {
+        val p = player
+        val state = _playback.value
+        // 일시정지 중에 속도를 바꾸면 일부 기기에서 재생이 시작돼 버린다. 재생 중일 때만 바로 적용하고,
+        // 아니면 다음 재생 때 적용한다.
+        if (p != null && state.playing) applySpeed(p, speed)
+        _playback.value = state.copy(speed = speed)
+    }
+
+    private fun applySpeed(p: MediaPlayer, speed: Float) {
+        runCatching { p.playbackParams = p.playbackParams.setSpeed(speed) }
+            .onFailure { AppLog.w(TAG, "재생 속도 변경 실패", it) }
     }
 
     fun seekTo(ms: Int) {
@@ -133,7 +173,7 @@ class RecordingsViewModel @Inject constructor(
 
     fun stopPlayback() {
         release()
-        _playback.value = PlaybackState()
+        _playback.value = PlaybackState(speed = _playback.value.speed)
     }
 
     private fun release() {

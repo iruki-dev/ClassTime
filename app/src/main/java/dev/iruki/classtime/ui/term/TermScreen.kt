@@ -1,62 +1,85 @@
 package dev.iruki.classtime.ui.term
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Flag
+import androidx.compose.material.icons.rounded.SportsScore
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.iruki.classtime.R
 import dev.iruki.classtime.data.ExceptionType
 import dev.iruki.classtime.data.ScheduleException
-import androidx.hilt.navigation.compose.hiltViewModel
+import dev.iruki.classtime.data.Term
+import dev.iruki.classtime.ui.common.AppSwitch
 import dev.iruki.classtime.ui.common.DatePickerModal
+import dev.iruki.classtime.ui.common.DetailTopBar
+import dev.iruki.classtime.ui.common.GroupGap
+import dev.iruki.classtime.ui.common.GroupRow
+import dev.iruki.classtime.ui.common.RowHeadline
+import dev.iruki.classtime.ui.common.RowSupporting
+import dev.iruki.classtime.ui.common.ScreenPadding
+import dev.iruki.classtime.ui.common.SectionHeader
 import dev.iruki.classtime.ui.common.TimePickerDialog
+import dev.iruki.classtime.ui.home.HomeViewModel
+import dev.iruki.classtime.ui.theme.AppTheme
+import dev.iruki.classtime.ui.theme.CourseColors
+import dev.iruki.classtime.ui.theme.tones
 import dev.iruki.classtime.util.TimeUtils
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
 import java.util.Locale
 
 private val dateFmt = DateTimeFormatter.ofPattern("yyyy.MM.dd (E)", Locale.KOREA)
+
+@Composable
+private fun longDate(date: LocalDate): String {
+    val locale = Locale.getDefault()
+    val pattern = remember(locale) { android.text.format.DateFormat.getBestDateTimePattern(locale, "yMMMMdE") }
+    return date.format(DateTimeFormatter.ofPattern(pattern, locale))
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -65,91 +88,104 @@ fun TermScreen(onBack: () -> Unit) {
     val term by vm.term.collectAsStateWithLifecycle()
     val exceptions by vm.upcomingExceptions.collectAsStateWithLifecycle()
     val courseOptions by vm.courseOptions.collectAsStateWithLifecycle()
+    val courseColors by vm.courseColors.collectAsStateWithLifecycle()
 
     var pickingStart by remember { mutableStateOf(false) }
     var pickingEnd by remember { mutableStateOf(false) }
     var addingCancel by remember { mutableStateOf(false) }
     var addingMakeup by remember { mutableStateOf(false) }
+    var menuOpen by remember { mutableStateOf(false) }
 
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.term_title)) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.action_back),
-                        )
-                    }
-                },
-            )
-        }
+        containerColor = AppTheme.colors.page,
+        topBar = { DetailTopBar(stringResource(R.string.term_title), onNavigate = onBack) },
+        floatingActionButton = {
+            Box {
+                ExtendedFloatingActionButton(
+                    onClick = { menuOpen = true },
+                    icon = { Icon(Icons.Rounded.Add, contentDescription = null) },
+                    text = { Text(stringResource(R.string.term_fab)) },
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.term_add_cancel)) },
+                        onClick = { menuOpen = false; addingCancel = true },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.term_add_makeup)) },
+                        onClick = { menuOpen = false; addingMakeup = true },
+                    )
+                }
+            }
+        },
     ) { inner ->
-        Column(
-            Modifier
-                .padding(inner)
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Text(stringResource(R.string.term_period_title), style = MaterialTheme.typography.titleMedium)
-            Text(
-                stringResource(R.string.term_period_hint),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedButton(onClick = { pickingStart = true }, modifier = Modifier.weight(1f)) {
-                    Text(
-                        stringResource(
-                            R.string.term_start_label,
-                            term?.startDate?.format(dateFmt) ?: stringResource(R.string.value_unset),
-                        )
-                    )
-                }
-                OutlinedButton(onClick = { pickingEnd = true }, modifier = Modifier.weight(1f)) {
-                    Text(
-                        stringResource(
-                            R.string.term_end_label,
-                            term?.endDate?.format(dateFmt) ?: stringResource(R.string.value_unset),
-                        )
-                    )
+        LazyColumn(Modifier.padding(inner), contentPadding = PaddingValues(bottom = 96.dp)) {
+            item(key = "term_h") {
+                SectionHeader(stringResource(R.string.term_section), Modifier.padding(horizontal = ScreenPadding))
+            }
+            item(key = "term_group") {
+                Column(
+                    Modifier.padding(horizontal = ScreenPadding),
+                    verticalArrangement = Arrangement.spacedBy(GroupGap),
+                ) {
+                    TermProgress(term)
+                    GroupRow(
+                        index = 1, count = 3,
+                        onClick = { pickingStart = true },
+                        leading = { Icon(Icons.Rounded.Flag, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+                        supporting = { RowSupporting(term?.startDate?.let { longDate(it) } ?: stringResource(R.string.value_unset)) },
+                        trailing = { Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+                    ) { RowHeadline(stringResource(R.string.term_start)) }
+                    GroupRow(
+                        index = 2, count = 3,
+                        onClick = { pickingEnd = true },
+                        leading = { Icon(Icons.Rounded.SportsScore, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+                        supporting = { RowSupporting(term?.endDate?.let { longDate(it) } ?: stringResource(R.string.value_unset)) },
+                        trailing = { Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+                    ) { RowHeadline(stringResource(R.string.term_end)) }
                 }
             }
-            if (term?.startDate != null || term?.endDate != null) {
-                TextButton(onClick = { vm.setTerm(null, null) }) {
-                    Text(stringResource(R.string.term_clear))
+            item(key = "term_hint") {
+                Row(
+                    Modifier.fillMaxWidth().padding(start = ScreenPadding + 16.dp, end = 8.dp, top = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        stringResource(R.string.term_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (term?.startDate != null || term?.endDate != null) {
+                        TextButton(onClick = { vm.setTerm(null, null) }) { Text(stringResource(R.string.term_clear)) }
+                    }
                 }
             }
 
-            HorizontalDivider(Modifier.padding(vertical = 4.dp))
-
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
+            item(key = "ex_h") {
+                SectionHeader(
                     stringResource(R.string.term_exceptions_title),
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.weight(1f),
+                    Modifier.padding(start = ScreenPadding, end = ScreenPadding, top = 16.dp),
                 )
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { addingCancel = true }) {
-                    Text(stringResource(R.string.term_add_cancel))
-                }
-                OutlinedButton(onClick = { addingMakeup = true }) {
-                    Text(stringResource(R.string.term_add_makeup))
-                }
-            }
-
             if (exceptions.isEmpty()) {
-                Text(
-                    stringResource(R.string.term_no_exceptions),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
+                item(key = "ex_empty") {
+                    GroupRow(index = 0, count = 1, modifier = Modifier.padding(horizontal = ScreenPadding), minHeight = 56.dp) {
+                        RowSupporting(stringResource(R.string.term_no_exceptions))
+                    }
+                }
             } else {
-                exceptions.forEach { ex -> ExceptionRow(ex) { vm.remove(ex) } }
+                itemsIndexed(exceptions, key = { _, e -> e.id }) { i, ex ->
+                    ExceptionRow(
+                        ex = ex,
+                        index = i,
+                        count = exceptions.size,
+                        colorArgb = ex.courseGroupId?.let { courseColors[it] },
+                        onDelete = { vm.remove(ex) },
+                    )
+                }
             }
         }
     }
@@ -190,64 +226,86 @@ fun TermScreen(onBack: () -> Unit) {
     }
 }
 
+/** 학기 진행 정도: 몇 주차, 종강까지 며칠. 기간이 비어 있으면 안내만. */
 @Composable
-private fun ExceptionRow(ex: ScheduleException, onDelete: () -> Unit) {
-    Card(
-        Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-    ) {
-        Row(
-            Modifier.padding(start = 14.dp, end = 4.dp).height(64.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        stringResource(
-                            if (ex.type == ExceptionType.CANCEL) R.string.term_type_cancel
-                            else R.string.term_type_makeup
-                        ),
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = if (ex.type == ExceptionType.CANCEL)
-                            MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(ex.date.format(dateFmt), style = MaterialTheme.typography.bodyMedium)
-                }
-                val detail = buildString {
-                    append(
-                        ex.subject.ifBlank {
-                            stringResource(
-                                if (ex.courseGroupId == null) R.string.term_scope_whole_day
-                                else R.string.term_scope_course
-                            )
-                        }
-                    )
-                    if (ex.type == ExceptionType.MAKEUP) {
-                        append("  ")
-                        append(TimeUtils.minuteToText(ex.startMinute))
-                        append("–")
-                        append(TimeUtils.minuteToText(ex.endMinute))
-                        append(
-                            stringResource(
-                                if (ex.autoRecord) R.string.term_auto_suffix
-                                else R.string.term_manual_suffix
-                            )
-                        )
-                    }
-                }
+private fun TermProgress(term: Term?) {
+    val today = LocalDate.now()
+    val start = term?.startDate
+    val end = term?.endDate
+    GroupRow(index = 0, count = 3, minHeight = 88.dp) {
+        Column(Modifier.padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            val week = HomeViewModel.weekOf(term, today)
+            Row(verticalAlignment = Alignment.Bottom) {
                 Text(
-                    detail,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    when {
+                        week != null -> stringResource(R.string.term_week, week)
+                        start != null && today.isBefore(start) ->
+                            stringResource(R.string.term_not_started, ChronoUnit.DAYS.between(today, start).toInt())
+                        end != null && today.isAfter(end) -> stringResource(R.string.term_ended)
+                        else -> stringResource(R.string.term_unset)
+                    },
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.weight(1f),
                 )
+                if (week != null && end != null) {
+                    Text(
+                        stringResource(R.string.term_days_left, ChronoUnit.DAYS.between(today, end).toInt()),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
-            IconButton(onClick = onDelete) {
-                Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.action_delete))
+            if (start != null && end != null && end.isAfter(start)) {
+                val total = ChronoUnit.DAYS.between(start, end).toFloat()
+                val done = ChronoUnit.DAYS.between(start, today).toFloat()
+                LinearProgressIndicator(
+                    progress = { (done / total).coerceIn(0f, 1f) },
+                    modifier = Modifier.fillMaxWidth().height(4.dp),
+                )
             }
         }
     }
+}
+
+@Composable
+private fun ExceptionRow(ex: ScheduleException, index: Int, count: Int, colorArgb: Int?, onDelete: () -> Unit) {
+    val c = MaterialTheme.colorScheme
+    val subject = ex.subject.ifBlank { stringResource(R.string.subject_makeup) }
+    val (title, meta) = when {
+        ex.type == ExceptionType.CANCEL && ex.courseGroupId == null ->
+            stringResource(R.string.term_holiday_title, subject) to stringResource(R.string.term_holiday_meta)
+        ex.type == ExceptionType.CANCEL ->
+            stringResource(R.string.term_cancel_title, subject) to stringResource(R.string.term_cancel_meta)
+        else -> stringResource(R.string.term_makeup_title, subject) to stringResource(
+            if (ex.autoRecord) R.string.term_makeup_meta_auto else R.string.term_makeup_meta_manual,
+            TimeUtils.minuteToText(ex.startMinute),
+            TimeUtils.minuteToText(ex.endMinute),
+        )
+    }
+    val (tileBg, tileFg) = if (ex.type == ExceptionType.MAKEUP && colorArgb != null) CourseColors.of(colorArgb).tones()
+    else c.surfaceContainerHigh to c.onSurfaceVariant
+
+    GroupRow(
+        index = index,
+        count = count,
+        modifier = Modifier.padding(horizontal = ScreenPadding, vertical = GroupGap / 2),
+        leading = {
+            Column(
+                Modifier.size(40.dp).background(tileBg, MaterialTheme.shapes.medium),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Text(ex.date.dayOfMonth.toString(), style = MaterialTheme.typography.titleMedium, color = tileFg)
+                Text(TimeUtils.dayName(ex.date.dayOfWeek.value), style = MaterialTheme.typography.labelSmall, color = tileFg)
+            }
+        },
+        supporting = { RowSupporting(ex.date.format(dateFmt) + " · " + meta) },
+        trailing = {
+            IconButton(onClick = onDelete) {
+                Icon(Icons.Rounded.Delete, contentDescription = stringResource(R.string.term_cd_delete, title))
+            }
+        },
+    ) { RowHeadline(title) }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -355,7 +413,7 @@ private fun AddMakeupDialog(
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(stringResource(R.string.term_auto_record), Modifier.weight(1f))
-                    Switch(checked = auto, onCheckedChange = { auto = it })
+                    AppSwitch(checked = auto, onCheckedChange = { auto = it })
                 }
             }
         },
