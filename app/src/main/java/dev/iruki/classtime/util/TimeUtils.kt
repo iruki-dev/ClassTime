@@ -53,6 +53,12 @@ object TimeUtils {
         LocalDateTime.ofInstant(Instant.ofEpochMilli(epochMillis), ZoneId.systemDefault())
             .format(listStamp)
 
+    /** epoch ms 의 시:분(24시간). 알림의 ‘10:25까지’ 같은 짧은 표시용. */
+    fun clockText(epochMillis: Long): String {
+        val t = LocalDateTime.ofInstant(Instant.ofEpochMilli(epochMillis), ZoneId.systemDefault())
+        return minuteToText(t.hour * 60 + t.minute)
+    }
+
     fun formatDuration(ms: Long): String {
         val totalSec = ms / 1000
         val h = totalSec / 3600

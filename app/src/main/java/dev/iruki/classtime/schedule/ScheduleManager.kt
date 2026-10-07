@@ -12,6 +12,7 @@ import dev.iruki.classtime.data.ExceptionType
 import dev.iruki.classtime.service.RecordingService
 import dev.iruki.classtime.util.AppLog
 import dev.iruki.classtime.util.AppPermissions
+import dev.iruki.classtime.util.AppSettings
 import dev.iruki.classtime.util.TimeUtils
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -31,6 +32,7 @@ import javax.inject.Singleton
 class ScheduleManager @Inject constructor(
     @ApplicationContext private val context: Context,
     private val repo: ClassTimeRepository,
+    private val settings: AppSettings,
 ) {
 
     private fun alarmManager() =
@@ -59,6 +61,18 @@ class ScheduleManager @Inject constructor(
         )
     }
 
+    /** 수업 전 알림. 시작 알람과 같은 본체에 [REMINDER_BIT] 를 얹어 서로 겹치지 않는다. */
+    private fun reminderPi(id: Long, makeup: Boolean): PendingIntent {
+        val intent = Intent(context, AlarmReceiver::class.java).apply {
+            action = ACTION_REMIND
+            putExtra(if (makeup) EXTRA_EXCEPTION_ID else EXTRA_COURSE_ID, id)
+        }
+        return PendingIntent.getBroadcast(
+            context, REMINDER_BIT or requestCode(id, start = true, makeup = makeup), intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+    }
+
     private fun coursePi(courseId: Long, start: Boolean) =
         pi(courseRequestCode(courseId, start), start, EXTRA_COURSE_ID, courseId)
 
@@ -71,12 +85,14 @@ class ScheduleManager @Inject constructor(
         val am = alarmManager()
         am.cancel(coursePi(courseId, true))
         am.cancel(coursePi(courseId, false))
+        am.cancel(reminderPi(courseId, makeup = false))
     }
 
     fun cancelMakeup(exceptionId: Long) {
         val am = alarmManager()
         am.cancel(makeupPi(exceptionId, true))
         am.cancel(makeupPi(exceptionId, false))
+        am.cancel(reminderPi(exceptionId, makeup = true))
     }
 
     // --- 전체 재설정 ---
@@ -93,12 +109,24 @@ class ScheduleManager @Inject constructor(
         val term = repo.termOnce()
 
         var armed = 0
+        val remindBefore = settings.reminderMinutes.value
 
         // 정규 수업: 시작 알람과 종료 알람의 날짜를 각각 구한다.
         // (이미 진행 중인 수업이면 종료 날짜 = 오늘, 시작 날짜 = 다음 주 → 오늘 종료 알람이 유지됨)
         for (course in courses) {
             am.cancel(coursePi(course.id, true))
             am.cancel(coursePi(course.id, false))
+            am.cancel(reminderPi(course.id, makeup = false))
+
+            // 수업 전 알림은 자동 녹음을 끈 과목에도 건다. ‘다음 수업이 곧’은 녹음과 별개다.
+            if (remindBefore > 0) {
+                CourseMatching.nextValidDate(
+                    course.dayOfWeek, course.startMinute, course.groupId, exceptions, term,
+                    now.plusMinutes(remindBefore.toLong()),
+                )?.let { date ->
+                    scheduleAt(am, reminderPi(course.id, makeup = false), date, course.startMinute, remindBefore)
+                }
+            }
             if (!course.autoRecord) continue
 
             val startDate = CourseMatching.nextValidDate(
@@ -121,11 +149,16 @@ class ScheduleManager @Inject constructor(
         for (ex in exceptions) {
             am.cancel(makeupPi(ex.id, true))
             am.cancel(makeupPi(ex.id, false))
-            if (ex.type != ExceptionType.MAKEUP || !ex.autoRecord) continue
+            am.cancel(reminderPi(ex.id, makeup = true))
+            if (ex.type != ExceptionType.MAKEUP) continue
 
             val date = ex.date
             if (date.isBefore(today)) continue
             if (!CourseMatching.withinTerm(term, date)) continue
+            if (remindBefore > 0) {
+                scheduleAt(am, reminderPi(ex.id, makeup = true), date, ex.startMinute, remindBefore)
+            }
+            if (!ex.autoRecord) continue
             val startAt = TimeUtils.millisAt(date, ex.startMinute)
             if (startAt <= System.currentTimeMillis()) continue
             scheduleAt(am, makeupPi(ex.id, true), date, ex.startMinute)
@@ -149,6 +182,11 @@ class ScheduleManager @Inject constructor(
         if (repo.ongoingRecording() != null) return
 
         val session = repo.sessionInProgress() ?: return
+        // 수업 전 알림에서 ‘이번엔 녹음 안 함’을 골랐다면 따라잡지도 않는다.
+        val today = LocalDate.now().toEpochDay()
+        val skipKey = session.exceptionId?.let { AppSettings.makeupSkipKey(it, today) }
+            ?: session.courseId?.let { AppSettings.courseSkipKey(it, today) }
+        if (skipKey != null && settings.isSkipped(skipKey)) return
         when {
             session.exceptionId != null -> RecordingService.startMakeup(context, session.exceptionId)
             session.courseId != null -> RecordingService.startAuto(context, session.courseId)
@@ -161,8 +199,9 @@ class ScheduleManager @Inject constructor(
         pendingIntent: PendingIntent,
         date: LocalDate,
         minuteOfDay: Int,
+        minutesBefore: Int = 0,
     ) {
-        val triggerAt = TimeUtils.millisAt(date, minuteOfDay)
+        val triggerAt = TimeUtils.millisAt(date, minuteOfDay) - minutesBefore * 60_000L
         if (triggerAt <= System.currentTimeMillis()) return
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !am.canScheduleExactAlarms()) {
@@ -179,6 +218,7 @@ class ScheduleManager @Inject constructor(
     companion object {
         const val ACTION_START = "dev.iruki.classtime.action.ALARM_START"
         const val ACTION_STOP = "dev.iruki.classtime.action.ALARM_STOP"
+        const val ACTION_REMIND = "dev.iruki.classtime.action.ALARM_REMIND"
         const val EXTRA_COURSE_ID = "course_id"
         const val EXTRA_EXCEPTION_ID = "exception_id"
 
@@ -186,6 +226,9 @@ class ScheduleManager @Inject constructor(
 
         /** 보강 알람 요청코드가 정규 수업 코드와 겹치지 않도록 하는 오프셋. */
         private const val MAKEUP_BIT = 0x40000000
+
+        /** 수업 전 알림 요청코드. 본체(최대 0x1FFFFFFF) 바로 위 비트라 어느 코드와도 겹치지 않는다. */
+        private const val REMINDER_BIT = 0x20000000
 
         /** 요청코드 본체에 쓸 수 있는 id 비트 수 (MAKEUP_BIT 와 부호 비트를 건드리지 않도록). */
         private const val ID_MASK = 0x0FFFFFFFL

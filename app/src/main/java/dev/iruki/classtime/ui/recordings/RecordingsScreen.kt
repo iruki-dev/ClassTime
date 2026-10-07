@@ -1,5 +1,6 @@
 package dev.iruki.classtime.ui.recordings
 
+
 import android.text.format.DateFormat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -54,6 +55,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -61,18 +63,16 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.iruki.classtime.R
-import dev.iruki.classtime.audio.RecordingStorage
 import dev.iruki.classtime.data.Recording
-import dev.iruki.classtime.ui.common.CourseAvatar
+import dev.iruki.classtime.ui.common.CourseIconTile
 import dev.iruki.classtime.ui.common.GroupGap
 import dev.iruki.classtime.ui.common.GroupRow
 import dev.iruki.classtime.ui.common.LargeHeader
 import dev.iruki.classtime.ui.common.RowHeadline
 import dev.iruki.classtime.ui.common.ScreenPadding
 import dev.iruki.classtime.ui.theme.AppTheme
-import dev.iruki.classtime.ui.theme.CourseColor
-import dev.iruki.classtime.ui.theme.CourseColors
-import dev.iruki.classtime.ui.theme.accent
+import dev.iruki.classtime.ui.theme.CourseIcons
+import dev.iruki.classtime.util.SystemScreens
 import dev.iruki.classtime.util.TimeUtils
 import java.time.Instant
 import java.time.ZoneId
@@ -80,30 +80,27 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 @Composable
-fun RecordingsScreen() {
+fun RecordingsScreen(onOpenPlayer: () -> Unit) {
     val vm: RecordingsViewModel = hiltViewModel()
     val groups by vm.grouped.collectAsStateWithLifecycle()
     val playback by vm.playback.collectAsStateWithLifecycle()
     val recordingActive by vm.recordingActive.collectAsStateWithLifecycle()
-    val subjectColors by vm.subjectColors.collectAsStateWithLifecycle()
     val filter by vm.filter.collectAsStateWithLifecycle()
+    val icons by vm.subjectIcons.collectAsStateWithLifecycle()
+    val context = LocalContext.current
 
     var renaming by remember { mutableStateOf<Recording?>(null) }
     var deleting by remember { mutableStateOf<Recording?>(null) }
-    var showStorage by remember { mutableStateOf(false) }
-    var playerOpen by remember { mutableStateOf(false) }
 
-    val colorOf = { subject: String -> CourseColors.of(subjectColors[subject] ?: CourseColors.palette.last().seed) }
     val all = groups.flatMap { it.second }
-    val current = all.firstOrNull { it.id == playback.recordingId }
-    val visible = if (filter == null) groups else groups.filter { it.first == filter }
+    val visible = if (filter.isEmpty()) groups else groups.filter { it.first in filter }
 
     Scaffold(
         containerColor = AppTheme.colors.page,
         contentWindowInsets = WindowInsets.statusBars,
     ) { inner ->
         Box(Modifier.padding(inner).fillMaxSize()) {
-            LazyColumn(contentPadding = PaddingValues(bottom = if (current != null) 96.dp else 24.dp)) {
+            LazyColumn(contentPadding = PaddingValues(bottom = 24.dp)) {
                 item(key = "header") {
                     LargeHeader(
                         title = stringResource(R.string.recordings_title),
@@ -113,7 +110,7 @@ fun RecordingsScreen() {
                             TimeUtils.formatSize(all.sumOf { it.sizeBytes }),
                         ),
                     ) {
-                        IconButton(onClick = { showStorage = true }) {
+                        IconButton(onClick = { SystemScreens.openRecordingsFolder(context) }) {
                             Icon(Icons.Rounded.FolderOpen, contentDescription = stringResource(R.string.recordings_cd_storage))
                         }
                     }
@@ -132,11 +129,11 @@ fun RecordingsScreen() {
                             modifier = Modifier.padding(bottom = 8.dp),
                         ) {
                             item {
-                                SubjectChip(stringResource(R.string.recordings_filter_all), filter == null, null) { vm.setFilter(null) }
+                                SubjectChip(stringResource(R.string.recordings_filter_all), filter.isEmpty()) { vm.clearFilter() }
                             }
                             items(groups, key = { it.first }) { (subject, _) ->
-                                SubjectChip(subject, filter == subject, colorOf(subject)) {
-                                    vm.setFilter(if (filter == subject) null else subject)
+                                SubjectChip(subject, subject in filter) {
+                                    vm.toggleFilter(subject)
                                 }
                             }
                         }
@@ -147,6 +144,7 @@ fun RecordingsScreen() {
                     item(key = "header_$subject") {
                         GroupHeader(
                             subject = subject,
+                            icon = icons[subject].orEmpty(),
                             count = recordings.size,
                             totalBytes = recordings.sumOf { it.sizeBytes },
                             onShareAll = { vm.shareAll(recordings) },
@@ -163,7 +161,7 @@ fun RecordingsScreen() {
                             onToggle = { vm.toggle(recording) },
                             onOpenPlayer = {
                                 if (playback.recordingId != recording.id) vm.toggle(recording)
-                                playerOpen = true
+                                onOpenPlayer()
                             },
                             onShare = { vm.share(recording) },
                             onRename = { renaming = recording },
@@ -172,32 +170,7 @@ fun RecordingsScreen() {
                     }
                 }
             }
-
-            if (current != null) {
-                MiniPlayer(
-                    recording = current,
-                    color = colorOf(current.subject),
-                    state = playback,
-                    onToggle = { vm.toggle(current) },
-                    onOpen = { playerOpen = true },
-                    modifier = Modifier.align(Alignment.BottomCenter).padding(8.dp),
-                )
-            }
         }
-    }
-
-    if (playerOpen && current != null) {
-        PlayerSheet(
-            recording = current,
-            color = colorOf(current.subject),
-            state = playback,
-            onDismiss = { playerOpen = false },
-            onToggle = { vm.toggle(current) },
-            onSeek = vm::seekTo,
-            onSeekBy = vm::seekBy,
-            onSpeed = vm::setSpeed,
-            onShare = { vm.share(current) },
-        )
     }
 
     renaming?.let { rec ->
@@ -237,18 +210,6 @@ fun RecordingsScreen() {
             },
         )
     }
-
-    if (showStorage) {
-        AlertDialog(
-            onDismissRequest = { showStorage = false },
-            icon = { Icon(Icons.Rounded.FolderOpen, contentDescription = null) },
-            title = { Text(stringResource(R.string.recordings_storage_title)) },
-            text = { Text(stringResource(R.string.recordings_storage_body, RecordingStorage.ROOT)) },
-            confirmButton = {
-                TextButton(onClick = { showStorage = false }) { Text(stringResource(R.string.action_close)) }
-            },
-        )
-    }
 }
 
 @Composable
@@ -276,25 +237,25 @@ private fun EmptyRecordings() {
 }
 
 @Composable
-private fun SubjectChip(label: String, selected: Boolean, color: CourseColor?, onClick: () -> Unit) {
+private fun SubjectChip(label: String, selected: Boolean, onClick: () -> Unit) {
     FilterChip(
         selected = selected,
         onClick = onClick,
         label = { Text(label) },
-        leadingIcon = when {
-            selected -> { { Icon(Icons.Rounded.Check, null, modifier = Modifier.size(FilterChipDefaults.IconSize)) } }
-            color != null -> { { Box(Modifier.size(12.dp).background(color.accent(), CircleShape)) } }
-            else -> null
-        },
+        leadingIcon = if (selected) {
+            { Icon(Icons.Rounded.Check, null, modifier = Modifier.size(FilterChipDefaults.IconSize)) }
+        } else null,
     )
 }
 
 @Composable
-private fun GroupHeader(subject: String, count: Int, totalBytes: Long, onShareAll: () -> Unit) {
+private fun GroupHeader(subject: String, icon: String, count: Int, totalBytes: Long, onShareAll: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().padding(start = ScreenPadding + 4.dp, end = 4.dp, top = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        CourseIconTile(CourseIcons.of(icon, subject), size = 32.dp)
         Column(Modifier.weight(1f)) {
             Text(subject, style = MaterialTheme.typography.titleMedium)
             Text(
@@ -408,69 +369,7 @@ private fun RecordingRow(
     }
 }
 
-@Composable
-private fun MiniPlayer(
-    recording: Recording,
-    color: CourseColor,
-    state: PlaybackState,
-    onToggle: () -> Unit,
-    onOpen: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val c = MaterialTheme.colorScheme
-    Surface(
-        onClick = onOpen,
-        color = c.surfaceContainerHigh,
-        shape = MaterialTheme.shapes.large,
-        shadowElevation = 3.dp,
-        modifier = modifier.fillMaxWidth(),
-    ) {
-        Box {
-            Row(
-                Modifier.padding(start = 12.dp, end = 4.dp, top = 12.dp, bottom = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                CourseAvatar(color, recording.subject)
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        "${recording.subject} · ${recordingTitle(recording.startedAt)}",
-                        style = MaterialTheme.typography.titleSmall,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        stringResource(
-                            R.string.player_mini_meta,
-                            TimeUtils.formatDuration(state.positionMs.toLong()),
-                            TimeUtils.formatDuration(state.durationMs.toLong()),
-                            speedLabel(state.speed),
-                        ),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = c.onSurfaceVariant,
-                    )
-                }
-                IconButton(onClick = onToggle) {
-                    Icon(
-                        if (state.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                        contentDescription = stringResource(if (state.playing) R.string.recordings_cd_pause else R.string.recordings_cd_play),
-                    )
-                }
-            }
-            val fraction = if (state.durationMs > 0) state.positionMs.toFloat() / state.durationMs else 0f
-            Box(
-                Modifier
-                    .align(Alignment.BottomStart)
-                    .fillMaxWidth(fraction.coerceIn(0f, 1f))
-                    .height(3.dp)
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(c.primary)
-            )
-        }
-    }
-}
-
 internal fun speedLabel(speed: Float): String =
     if (speed % 1f == 0f) "${speed.toInt()}×" else "${speed}×"
 
-internal val SPEEDS = listOf(1f, 1.25f, 1.5f, 2f)
+internal val SPEEDS = listOf(0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)

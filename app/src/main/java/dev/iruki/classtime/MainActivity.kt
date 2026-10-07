@@ -7,6 +7,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -22,6 +24,7 @@ import dev.iruki.classtime.util.AppPermissions
 import dev.iruki.classtime.util.AppSettings
 import dev.iruki.classtime.util.SetupId
 import dev.iruki.classtime.util.SetupIssue
+import dev.iruki.classtime.util.ThemeMode
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -52,7 +55,13 @@ class MainActivity : ComponentActivity() {
         refreshSetupIssues()
 
         setContent {
-            ClassTimeTheme {
+            val themeMode by settings.themeMode.collectAsState()
+            val dark = when (themeMode) {
+                ThemeMode.SYSTEM -> isSystemInDarkTheme()
+                ThemeMode.LIGHT -> false
+                ThemeMode.DARK -> true
+            }
+            ClassTimeTheme(darkTheme = dark) {
                 ClassTimeNavHost(
                     setupIssues = setupIssues,
                     onResolveIssue = ::resolve,

@@ -7,6 +7,7 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import dev.iruki.classtime.audio.RecordingScanner
 import dev.iruki.classtime.audio.RecordingStorage
 import dev.iruki.classtime.data.AppDatabase
 import dev.iruki.classtime.data.CourseDao
@@ -39,7 +40,7 @@ object AppModule {
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): AppDatabase =
         Room.databaseBuilder(context, AppDatabase::class.java, AppDatabase.NAME)
-            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3)
+            .addMigrations(*AppDatabase.ALL_MIGRATIONS)
             .build()
 
     @Provides fun provideCourseDao(db: AppDatabase): CourseDao = db.courseDao()
@@ -52,6 +53,11 @@ object AppModule {
     @Singleton
     fun provideRecordingStorage(@ApplicationContext context: Context): RecordingStorage =
         RecordingStorage(context)
+
+    @Provides
+    @Singleton
+    fun provideRecordingScanner(@ApplicationContext context: Context): RecordingScanner =
+        RecordingScanner(context)
 
     @Provides
     @Singleton

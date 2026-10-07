@@ -39,9 +39,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import dev.iruki.classtime.R
 import dev.iruki.classtime.ui.theme.AppTheme
-import dev.iruki.classtime.ui.theme.CourseColor
+import dev.iruki.classtime.ui.theme.CourseIcon
 import dev.iruki.classtime.ui.theme.GroupShapes
-import dev.iruki.classtime.ui.theme.tones
 
 /** 화면 좌우 여백. Compact 창 기준(M3). */
 val ScreenPadding = 16.dp
@@ -191,19 +190,28 @@ fun RowSupporting(text: String, color: Color = MaterialTheme.colorScheme.onSurfa
     Text(text, style = MaterialTheme.typography.bodyMedium, color = color)
 }
 
-/** 과목 아바타: 과목 컨테이너 색 위의 첫 글자. 모서리는 크기의 약 30%. */
+/** 아이콘 타일 바탕. 흰 묶음 위에서 살짝 들어가 보이는 중립 면. */
 @Composable
-fun CourseAvatar(color: CourseColor, subject: String, size: Dp = 40.dp) {
-    val (bg, fg) = color.tones()
+fun tileContainer(): Color =
+    if (AppTheme.colors.isDark) MaterialTheme.colorScheme.surfaceContainerHigh
+    else MaterialTheme.colorScheme.surfaceContainer
+
+/**
+ * 과목 아이콘 타일. **무채색**이다 — 과목 색은 시간표 칸에만 쓰고, 아이콘과 같은 요소에
+ * 섞지 않는다. 줄마다 색이 바뀌면 녹음·다음 같은 상태 색이 묻힌다.
+ */
+@Composable
+fun CourseIconTile(
+    icon: CourseIcon,
+    size: Dp = 40.dp,
+    container: Color = tileContainer(),
+    content: Color = MaterialTheme.colorScheme.onSurfaceVariant,
+) {
     Box(
-        Modifier.size(size).background(bg, RoundedCornerShape(size * 0.3f)),
+        Modifier.size(size).background(container, RoundedCornerShape(size * 0.3f)),
         contentAlignment = Alignment.Center,
     ) {
-        Text(
-            subject.trim().take(1).ifEmpty { "·" },
-            color = fg,
-            style = if (size >= 56.dp) MaterialTheme.typography.titleLarge else MaterialTheme.typography.titleMedium,
-        )
+        Icon(icon.vector, contentDescription = null, tint = content, modifier = Modifier.size(size * 0.55f))
     }
 }
 

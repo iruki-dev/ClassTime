@@ -1,6 +1,7 @@
 package dev.iruki.classtime.ui
 
 import androidx.annotation.StringRes
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -19,9 +20,15 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -32,6 +39,9 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import dev.iruki.classtime.R
 import dev.iruki.classtime.ui.home.HomeScreen
+import dev.iruki.classtime.ui.player.MiniPlayer
+import dev.iruki.classtime.ui.player.PlayerSheet
+import dev.iruki.classtime.ui.player.PlayerViewModel
 import dev.iruki.classtime.ui.recordings.RecordingsScreen
 import dev.iruki.classtime.ui.settings.SettingsScreen
 import dev.iruki.classtime.ui.term.TermScreen
@@ -67,6 +77,14 @@ fun ClassTimeNavHost(
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
+    val onTab = currentRoute in tabs.map { it.route }
+
+    // 재생은 앱 전체가 공유한다. 미니 플레이어는 모든 탭의 하단 탭 바로 위에 뜬다.
+    val playerVm: PlayerViewModel = hiltViewModel()
+    val playback by playerVm.state.collectAsStateWithLifecycle()
+    val styles by playerVm.styles.collectAsStateWithLifecycle()
+    var playerOpen by remember { mutableStateOf(false) }
+    val nowPlaying = playback.recording
 
     // 탭 화면은 바탕(page)과 같은 색의 하단 탭을 쓴다. 상단 인셋은 각 화면이, 하단 인셋은
     // 하단 탭(또는 탭이 없는 상세 화면 자신)이 처리하도록 여기서는 인셋을 쓰지 않는다.
@@ -74,21 +92,34 @@ fun ClassTimeNavHost(
         containerColor = AppTheme.colors.page,
         contentWindowInsets = WindowInsets(0),
         bottomBar = {
-            if (currentRoute in tabs.map { it.route }) {
-                NavigationBar(containerColor = AppTheme.colors.page) {
-                    tabs.forEach { dest ->
-                        val selected = currentRoute == dest.route
-                        NavigationBarItem(
-                            selected = selected,
-                            onClick = { navController.switchTab(dest.route) },
-                            icon = {
-                                Icon(if (selected) dest.selectedIcon else dest.icon, contentDescription = null)
-                            },
-                            label = { Text(stringResource(dest.label)) },
-                            colors = NavigationBarItemDefaults.colors(
-                                selectedTextColor = MaterialTheme.colorScheme.secondary,
-                            ),
-                        )
+            Column {
+                if (onTab && nowPlaying != null) {
+                    MiniPlayer(
+                        recording = nowPlaying,
+                        icon = styles[nowPlaying.subject]?.icon.orEmpty(),
+                        state = playback,
+                        onToggle = { playerVm.toggle(nowPlaying) },
+                        onOpen = { playerOpen = true },
+                        onClose = playerVm::close,
+                        modifier = Modifier.padding(start = 8.dp, end = 8.dp, bottom = 8.dp),
+                    )
+                }
+                if (onTab) {
+                    NavigationBar(containerColor = AppTheme.colors.page) {
+                        tabs.forEach { dest ->
+                            val selected = currentRoute == dest.route
+                            NavigationBarItem(
+                                selected = selected,
+                                onClick = { navController.switchTab(dest.route) },
+                                icon = {
+                                    Icon(if (selected) dest.selectedIcon else dest.icon, contentDescription = null)
+                                },
+                                label = { Text(stringResource(dest.label)) },
+                                colors = NavigationBarItemDefaults.colors(
+                                    selectedTextColor = MaterialTheme.colorScheme.secondary,
+                                ),
+                            )
+                        }
                     }
                 }
             }
@@ -117,7 +148,7 @@ fun ClassTimeNavHost(
                 )
             }
             composable(Dest.Recordings.route) {
-                RecordingsScreen()
+                RecordingsScreen(onOpenPlayer = { playerOpen = true })
             }
             composable(
                 route = ROUTE_COURSE_EDIT,
@@ -145,6 +176,25 @@ fun ClassTimeNavHost(
                 )
             }
         }
+    }
+
+    if (playerOpen && nowPlaying != null) {
+        PlayerSheet(
+            recording = nowPlaying,
+            icon = styles[nowPlaying.subject]?.icon.orEmpty(),
+            state = playback,
+            onDismiss = { playerOpen = false },
+            onToggle = { playerVm.toggle(nowPlaying) },
+            onSeek = playerVm::seekTo,
+            onSeekBy = playerVm::seekBy,
+            onSpeed = playerVm::setSpeed,
+            onShare = { playerVm.share(nowPlaying) },
+            onOpenFolder = playerVm::openFolder,
+            onDelete = {
+                playerOpen = false
+                playerVm.delete(nowPlaying)
+            },
+        )
     }
 }
 

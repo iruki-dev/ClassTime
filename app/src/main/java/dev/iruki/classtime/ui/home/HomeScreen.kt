@@ -21,17 +21,19 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.EventNote
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.BatterySaver
 import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.EditCalendar
 import androidx.compose.material.icons.rounded.Error
-import androidx.compose.material.icons.rounded.EventNote
 import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.MicOff
+import androidx.compose.material.icons.rounded.MoreTime
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.RadioButtonChecked
 import androidx.compose.material.icons.rounded.Schedule
@@ -41,8 +43,9 @@ import androidx.compose.material.icons.rounded.Verified
 import androidx.compose.material.icons.rounded.VerifiedUser
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -76,8 +79,9 @@ import dev.iruki.classtime.R
 import dev.iruki.classtime.data.RecordingStatus
 import dev.iruki.classtime.data.Session
 import dev.iruki.classtime.data.StandbyState
+import dev.iruki.classtime.service.RecordingService
 import dev.iruki.classtime.ui.common.AppSwitch
-import dev.iruki.classtime.ui.common.CourseAvatar
+import dev.iruki.classtime.ui.common.CourseIconTile
 import dev.iruki.classtime.ui.common.GroupGap
 import dev.iruki.classtime.ui.common.GroupRow
 import dev.iruki.classtime.ui.common.IconTile
@@ -89,7 +93,8 @@ import dev.iruki.classtime.ui.common.SectionHeader
 import dev.iruki.classtime.ui.common.StatusLabel
 import dev.iruki.classtime.ui.common.formatSpan
 import dev.iruki.classtime.ui.theme.AppTheme
-import dev.iruki.classtime.ui.theme.CourseColors
+import dev.iruki.classtime.ui.common.tileContainer
+import dev.iruki.classtime.ui.theme.CourseIcons
 import dev.iruki.classtime.util.SetupId
 import dev.iruki.classtime.util.SetupIssue
 import dev.iruki.classtime.util.TimeUtils
@@ -137,21 +142,6 @@ fun HomeScreen(
     Scaffold(
         containerColor = AppTheme.colors.page,
         contentWindowInsets = WindowInsets.statusBars,
-        floatingActionButton = {
-            if (!firstRun || status.active) {
-                RecordFab(
-                    recording = status.active,
-                    onClick = {
-                        when {
-                            status.active -> vm.stop()
-                            micIssue != null -> onResolveIssue(micIssue)
-                            currentSubject != null -> vm.startManual(null)
-                            else -> showSheet = true
-                        }
-                    },
-                )
-            }
-        },
     ) { inner ->
         LazyColumn(
             Modifier.padding(inner),
@@ -162,6 +152,18 @@ fun HomeScreen(
                     title = stringResource(R.string.home_title),
                     subtitle = dateSubtitle(termWeek),
                 ) {
+                    // 수동 녹음은 자주 쓰지 않는다. 큰 버튼 대신 설정 옆 아이콘 하나로 둔다.
+                    if (!status.active && !firstRun) {
+                        IconButton(onClick = {
+                            when {
+                                micIssue != null -> onResolveIssue(micIssue)
+                                currentSubject != null -> vm.startManual(null)
+                                else -> showSheet = true
+                            }
+                        }) {
+                            Icon(Icons.Rounded.Mic, contentDescription = stringResource(R.string.home_cd_record))
+                        }
+                    }
                     IconButton(onClick = onOpenSettings) {
                         Icon(Icons.Rounded.Settings, contentDescription = stringResource(R.string.home_cd_settings))
                     }
@@ -171,7 +173,7 @@ fun HomeScreen(
             item(key = "status") {
                 Box(Modifier.padding(horizontal = ScreenPadding)) {
                     when {
-                        status.active -> RecordingCard(status, now, level)
+                        status.active -> RecordingCard(status, now, level, onExtend = vm::extend, onStop = vm::stop)
                         fixCount > 0 -> AttentionCard(fixCount, next, nowMinute)
                         firstRun -> FirstRunCard(onAddCourse = onAddCourse, onRecordNow = { showSheet = true })
                         hasAnyCourse == true -> ScheduleCard(
@@ -457,7 +459,15 @@ private fun AttentionCard(count: Int, next: Session?, nowMinute: Int) {
 }
 
 @Composable
-private fun RecordingCard(status: RecordingStatus, now: Long, level: Int) {
+private fun RecordingCard(
+    status: RecordingStatus,
+    now: Long,
+    level: Int,
+    onExtend: (Int) -> Unit,
+    onStop: () -> Unit,
+) {
+    // 연장 버튼을 누르면 같은 줄이 1·2·3·5·10분 버튼으로 바뀐다. 따로 뜨는 시트는 없다.
+    var extendOpen by remember { mutableStateOf(false) }
     val colors = AppTheme.colors
     val elapsed = (now - status.startedAt).coerceAtLeast(0L)
     // 최근 진폭 몇 개만 기억해 막대로 그린다. 한 번의 조용한 표본에 ‘조용해요’가 깜빡이지 않도록.
@@ -499,7 +509,11 @@ private fun RecordingCard(status: RecordingStatus, now: Long, level: Int) {
                     modifier = Modifier.weight(1f),
                 )
                 Text(
-                    stringResource(
+                    if (status.extendedMinutes > 0) stringResource(
+                        R.string.home_rec_ends_at_extended,
+                        TimeUtils.minuteToText(minuteOfDay(status.plannedEndAt)),
+                        status.extendedMinutes,
+                    ) else stringResource(
                         R.string.home_rec_ends_at,
                         TimeUtils.minuteToText(minuteOfDay(status.plannedEndAt)),
                         formatSpan(remainingMin),
@@ -524,6 +538,76 @@ private fun RecordingCard(status: RecordingStatus, now: Long, level: Int) {
             LevelBars(recent, colors.onRecord)
             Text(levelText, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 12.dp))
         }
+        // 정지와 연장은 카드 안에 둔다. 떠 있는 버튼보다 ‘이 녹음’에 대한 동작이라는 것이 분명하다.
+        val tonal = ButtonDefaults.buttonColors(
+            containerColor = colors.onRecord.copy(alpha = 0.18f),
+            contentColor = colors.onRecord,
+        )
+        val solid = ButtonDefaults.buttonColors(containerColor = colors.onRecord, contentColor = colors.record)
+        Box(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 8.dp).animateContentSize()) {
+            if (extendOpen && status.plannedEndAt > 0L) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilledIconButton(
+                        onClick = { extendOpen = false },
+                        colors = IconButtonDefaults.filledIconButtonColors(
+                            containerColor = colors.onRecord.copy(alpha = 0.18f),
+                            contentColor = colors.onRecord,
+                        ),
+                        modifier = Modifier.size(56.dp),
+                    ) { Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.home_rec_extend_close)) }
+                    Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                        val choices = RecordingService.EXTEND_CHOICES
+                        choices.forEachIndexed { i, minutes ->
+                            val cd = stringResource(R.string.home_rec_extend_cd, minutes)
+                            Button(
+                                onClick = { onExtend(minutes); extendOpen = false },
+                                colors = solid,
+                                shape = connectedShape(i, choices.size),
+                                contentPadding = PaddingValues(0.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(56.dp)
+                                    .semantics { contentDescription = cd },
+                            ) { Text("+$minutes", style = MaterialTheme.typography.titleSmall) }
+                        }
+                    }
+                }
+            } else {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (status.plannedEndAt > 0L) {
+                        Button(
+                            onClick = { extendOpen = true },
+                            colors = tonal,
+                            modifier = Modifier.weight(1f).height(56.dp),
+                        ) {
+                            Icon(Icons.Rounded.MoreTime, contentDescription = null)
+                            Spacer(Modifier.width(8.dp))
+                            Text(stringResource(R.string.home_rec_extend), style = MaterialTheme.typography.titleMedium)
+                        }
+                    }
+                    Button(
+                        onClick = onStop,
+                        colors = solid,
+                        modifier = Modifier.weight(1f).height(56.dp),
+                    ) {
+                        Icon(Icons.Rounded.Stop, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text(stringResource(R.string.home_fab_stop), style = MaterialTheme.typography.titleMedium)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** M3 Expressive 연결 버튼 그룹 모양: 양 끝은 완전 원, 안쪽 모서리는 8. */
+private fun connectedShape(index: Int, count: Int): RoundedCornerShape {
+    val inner = 8.dp
+    val outer = 28.dp
+    return when (index) {
+        0 -> RoundedCornerShape(topStart = outer, bottomStart = outer, topEnd = inner, bottomEnd = inner)
+        count - 1 -> RoundedCornerShape(topStart = inner, bottomStart = inner, topEnd = outer, bottomEnd = outer)
+        else -> RoundedCornerShape(inner)
     }
 }
 
@@ -556,7 +640,7 @@ private fun FirstRunCard(onAddCourse: () -> Unit, onRecordNow: () -> Unit) {
                 Modifier.size(64.dp).background(c.primaryContainer, RoundedCornerShape(20.dp)),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Rounded.EventNote, contentDescription = null, tint = c.onPrimaryContainer, modifier = Modifier.size(32.dp))
+                Icon(Icons.AutoMirrored.Rounded.EventNote, contentDescription = null, tint = c.onPrimaryContainer, modifier = Modifier.size(32.dp))
             }
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(stringResource(R.string.home_first_title), style = MaterialTheme.typography.headlineSmall)
@@ -573,12 +657,7 @@ private fun FirstRunCard(onAddCourse: () -> Unit, onRecordNow: () -> Unit) {
                     Text(stringResource(R.string.home_first_add), style = MaterialTheme.typography.titleMedium)
                 }
                 TextButton(onClick = onRecordNow, modifier = Modifier.fillMaxWidth().height(48.dp)) {
-                    Icon(
-                        Icons.Rounded.RadioButtonChecked,
-                        contentDescription = null,
-                        tint = AppTheme.colors.recordAccent,
-                        modifier = Modifier.size(20.dp),
-                    )
+                    Icon(Icons.Rounded.Mic, contentDescription = null, modifier = Modifier.size(20.dp))
                     Spacer(Modifier.width(8.dp))
                     Text(stringResource(R.string.home_first_record))
                 }
@@ -637,7 +716,16 @@ private fun SessionRow(
         selected = isNext,
         color = if (recordingThis) colors.recordSubtle else null,
         modifier = Modifier.padding(horizontal = ScreenPadding, vertical = GroupGap / 2),
-        leading = { CourseAvatar(CourseColors.of(session.colorArgb), session.displaySubject()) },
+        leading = {
+            CourseIconTile(
+                CourseIcons.of(session.icon, session.subject),
+                container = when {
+                    recordingThis || isNext -> colors.group
+                    else -> tileContainer()
+                },
+                content = if (recordingThis) colors.onRecordSubtle else c.onSurfaceVariant,
+            )
+        },
         supporting = { RowSupporting(session.timeAndRoom()) },
         trailing = {
             when {
@@ -668,24 +756,6 @@ private fun Session.timeAndRoom(): String {
     val end = TimeUtils.minuteToText(endMinute)
     return if (room.isNotBlank()) stringResource(R.string.home_session_time_room, start, end, room)
     else stringResource(R.string.home_session_time, start, end)
-}
-
-@Composable
-private fun RecordFab(recording: Boolean, onClick: () -> Unit) {
-    val colors = AppTheme.colors
-    ExtendedFloatingActionButton(
-        onClick = onClick,
-        containerColor = if (recording) colors.record else colors.recordContainer,
-        contentColor = if (recording) colors.onRecord else colors.onRecordContainer,
-        icon = {
-            Icon(
-                if (recording) Icons.Rounded.Stop else Icons.Rounded.RadioButtonChecked,
-                contentDescription = null,
-                tint = if (recording) colors.onRecord else colors.recordAccent,
-            )
-        },
-        text = { Text(stringResource(if (recording) R.string.home_fab_stop else R.string.home_fab_record)) },
-    )
 }
 
 private fun minuteOfDay(epochMs: Long): Int {

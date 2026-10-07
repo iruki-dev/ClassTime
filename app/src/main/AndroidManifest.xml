@@ -19,6 +19,15 @@
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
+    <!--
+      폴더 검사용. 이 앱이 만든 파일은 권한 없이 보이지만, 재설치 전의 녹음이나 PC 에서 넣은
+      파일은 ‘다른 앱의 파일’이라 오디오 읽기 권한이 있어야 보인다. 검사할 때만 요청한다.
+    -->
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+
     <!-- Needed only on API 26-28 to write into the public Music directory. -->
     <uses-permission
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
@@ -59,6 +68,19 @@
         <receiver
             android:name=".service.RecordingWatchdogReceiver"
             android:exported="false" />
+
+        <!-- 홈 화면 ‘오늘’ 위젯 -->
+        <receiver
+            android:name=".widget.TodayWidgetReceiver"
+            android:exported="true"
+            android:label="@string/widget_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/today_widget_info" />
+        </receiver>
 
         <receiver
             android:name=".schedule.BootReceiver"

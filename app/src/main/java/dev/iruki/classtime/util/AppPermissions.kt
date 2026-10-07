@@ -67,6 +67,11 @@ object AppPermissions {
         }
     }.toTypedArray()
 
+    /** 폴더 검사에 필요한 오디오 읽기 권한. 검사 버튼을 누를 때만 요청한다. */
+    fun audioReadPermission(): String =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) Manifest.permission.READ_MEDIA_AUDIO
+        else Manifest.permission.READ_EXTERNAL_STORAGE
+
     fun allRuntimeGranted(context: Context): Boolean =
         runtimePermissions().all { granted(context, it) }
 

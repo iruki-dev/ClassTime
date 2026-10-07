@@ -13,6 +13,9 @@ interface RecordingDao {
     @Query("SELECT * FROM recordings ORDER BY startedAt DESC")
     fun observeAll(): Flow<List<Recording>>
 
+    @Query("SELECT * FROM recordings ORDER BY startedAt DESC")
+    suspend fun getAll(): List<Recording>
+
     @Query("SELECT * FROM recordings WHERE id = :id")
     suspend fun getById(id: Long): Recording?
 

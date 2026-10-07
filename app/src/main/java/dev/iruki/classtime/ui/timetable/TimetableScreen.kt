@@ -62,6 +62,7 @@ import dev.iruki.classtime.ui.common.LargeHeader
 import dev.iruki.classtime.ui.theme.AppTheme
 import dev.iruki.classtime.ui.theme.CourseColor
 import dev.iruki.classtime.ui.theme.CourseColors
+import dev.iruki.classtime.ui.theme.subTone
 import dev.iruki.classtime.ui.theme.tones
 import dev.iruki.classtime.util.TimeUtils
 import java.time.LocalDate
@@ -320,14 +321,22 @@ private fun WeekGrid(
                 }
             }
             days.forEach { dow ->
-                Box(Modifier.weight(1f).height(totalHeight).padding(start = ColumnGap)) {
+                // 오늘 칸은 바탕을 살짝 물들여 한눈에 찾게 한다.
+                val todayTint = if (dow == todayDow) c.primary.copy(alpha = if (AppTheme.colors.isDark) 0.08f else 0.06f) else Color.Transparent
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .height(totalHeight)
+                        .padding(start = ColumnGap)
+                        .background(todayTint, MaterialTheme.shapes.medium)
+                ) {
                     for (hour in (gridStart / 60)..(gridEnd / 60)) {
                         Box(
                             Modifier
                                 .offset(y = ((hour * 60 - gridStart) * MINUTE_DP).dp)
                                 .fillMaxWidth()
                                 .height(1.dp)
-                                .background(c.surfaceContainerHigh)
+                                .background(if (AppTheme.colors.isDark) c.surfaceContainerHigh else c.surfaceContainerLow)
                         )
                     }
                     blocks.filter { it.dayOfWeek == dow }.forEach { b ->
@@ -335,8 +344,9 @@ private fun WeekGrid(
                     }
                     if (dow == todayDow && nowMinute in gridStart..gridEnd) {
                         val y = ((nowMinute - gridStart) * MINUTE_DP).dp
-                        Box(Modifier.offset(y = y - 1.dp).fillMaxWidth().height(2.dp).background(c.primary))
-                        Box(Modifier.offset(x = (-4).dp, y = y - 4.dp).size(8.dp).background(c.primary, CircleShape))
+                        val now = AppTheme.colors.recordAccent
+                        Box(Modifier.offset(y = y - 1.dp).fillMaxWidth().height(2.dp).background(now))
+                        Box(Modifier.offset(x = (-4).dp, y = y - 4.dp).size(8.dp).background(now, CircleShape))
                     }
                 }
             }
@@ -344,19 +354,23 @@ private fun WeekGrid(
     }
 }
 
+/**
+ * 시간표 칸. 과목 색(T80 진한 파스텔)으로 채우고 글자는 같은 색조의 T20 — 색이 분명하면서
+ * 대비는 7:1 이 넘는다. 자동 녹음을 끈 수업도 색은 그대로 두고 mic_off 아이콘만 붙인다
+ * (예전처럼 외곽선만 남기면 시간표가 군데군데 비어 보였다).
+ */
 @Composable
 private fun CourseBlock(block: Block, gridStart: Int, onClick: () -> Unit) {
     val c = MaterialTheme.colorScheme
     val (container, onContainer) = block.color.tones()
+    val sub = block.color.subTone()
     val height: Dp = ((block.endMinute - block.startMinute) * MINUTE_DP).dp - ColumnGap
     val top: Dp = ((block.startMinute - gridStart) * MINUTE_DP).dp
-    val shape = MaterialTheme.shapes.small
-    val bg = when (block.kind) {
-        BlockKind.AUTO_OFF -> AppTheme.colors.group
-        BlockKind.CANCELLED -> c.surfaceContainerHigh
-        else -> container
-    }
-    val fg = if (block.kind == BlockKind.CANCELLED) c.onSurfaceVariant else onContainer
+    val shape = RoundedCornerShape(10.dp)
+    val cancelled = block.kind == BlockKind.CANCELLED
+    val bg = if (cancelled) AppTheme.colors.page else container
+    val fg = if (cancelled) c.onSurfaceVariant else onContainer
+    val fgSub = if (cancelled) c.onSurfaceVariant else sub
     val description = stringResource(
         R.string.timetable_cd_block,
         block.subject,
@@ -373,43 +387,48 @@ private fun CourseBlock(block: Block, gridStart: Int, onClick: () -> Unit) {
     Column(
         Modifier
             .offset(y = top)
+            .padding(horizontal = 1.dp)
             .fillMaxWidth()
             .height(height)
             .clip(shape)
             .background(bg)
-            .then(if (block.kind == BlockKind.AUTO_OFF) Modifier.border(1.5.dp, onContainer, shape) else Modifier)
+            .then(if (cancelled) Modifier.border(1.dp, c.outlineVariant, shape) else Modifier)
             .clickable(onClick = onClick)
             .clearAndSetSemantics { contentDescription = description }
-            .padding(6.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
+            .padding(start = 6.dp, end = 6.dp, top = 6.dp, bottom = 5.dp),
+        verticalArrangement = Arrangement.spacedBy(1.dp),
     ) {
         if (block.kind == BlockKind.MAKEUP) {
             Text(
                 stringResource(R.string.timetable_makeup),
-                style = MaterialTheme.typography.labelSmall,
+                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                 color = container,
-                modifier = Modifier.background(onContainer, RoundedCornerShape(4.dp)).padding(horizontal = 4.dp),
+                modifier = Modifier
+                    .padding(bottom = 2.dp)
+                    .background(onContainer, RoundedCornerShape(4.dp))
+                    .padding(horizontal = 5.dp),
             )
         }
         Text(
             block.subject,
-            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
             color = fg,
             maxLines = 3,
             overflow = TextOverflow.Ellipsis,
-            textDecoration = if (block.kind == BlockKind.CANCELLED) TextDecoration.LineThrough else null,
+            textDecoration = if (cancelled) TextDecoration.LineThrough else null,
         )
         if (height >= 48.dp) {
             Text(
-                if (block.kind == BlockKind.CANCELLED) stringResource(R.string.timetable_holiday) else block.room,
-                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Normal),
-                color = fg,
+                if (cancelled) stringResource(R.string.timetable_holiday) else block.room,
+                style = MaterialTheme.typography.labelSmall,
+                color = fgSub,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
         }
         if (block.kind == BlockKind.AUTO_OFF) {
-            Icon(Icons.Rounded.MicOff, contentDescription = null, tint = fg, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.weight(1f))
+            Icon(Icons.Rounded.MicOff, contentDescription = null, tint = fgSub, modifier = Modifier.size(15.dp))
         }
     }
 }

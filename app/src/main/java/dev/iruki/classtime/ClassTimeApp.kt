@@ -9,7 +9,13 @@ import dev.iruki.classtime.data.ClassTimeRepository
 import dev.iruki.classtime.di.ApplicationScope
 import dev.iruki.classtime.util.AppLog
 import javax.inject.Inject
+import dev.iruki.classtime.widget.TodayWidget
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 @HiltAndroidApp
@@ -28,6 +34,24 @@ class ClassTimeApp : Application() {
         applicationScope.launch {
             runCatching { repository.healStaleRecordings() }
                 .onFailure { AppLog.e(TAG, "시작 시 미완료 녹음 복구 실패", it) }
+        }
+        keepWidgetInSync()
+    }
+
+    /**
+     * 녹음 상태나 오늘 수업이 바뀌면 위젯을 다시 그린다. 위젯은 스스로 데이터를 관찰하지 못한다.
+     * 시간이 흘러 ‘다음 수업’이 바뀌는 것은 수업 시작·종료 알람(AlarmReceiver)이 맡는다.
+     */
+    @OptIn(FlowPreview::class)
+    private fun keepWidgetInSync() {
+        applicationScope.launch {
+            combine(
+                repository.status.map { Triple(it.active, it.subject, it.plannedEndAt) },
+                repository.todaySessions,
+            ) { status, sessions -> status to sessions }
+                .distinctUntilChanged()
+                .debounce(500)
+                .collect { TodayWidget.refresh(this@ClassTimeApp) }
         }
     }
 
@@ -48,7 +72,14 @@ class ClassTimeApp : Application() {
         ).apply {
             description = getString(R.string.channel_warning_desc)
         }
-        notificationManager(this).createNotificationChannels(listOf(recording, warning))
+        val reminder = NotificationChannel(
+            CHANNEL_REMINDER,
+            getString(R.string.channel_reminder_name),
+            NotificationManager.IMPORTANCE_DEFAULT,
+        ).apply {
+            description = getString(R.string.channel_reminder_desc)
+        }
+        notificationManager(this).createNotificationChannels(listOf(recording, warning, reminder))
     }
 
     companion object {
@@ -56,6 +87,7 @@ class ClassTimeApp : Application() {
 
         const val CHANNEL_RECORDING = "recording"
         const val CHANNEL_WARNING = "warning"
+        const val CHANNEL_REMINDER = "reminder"
 
         fun notificationManager(context: Context): NotificationManager =
             context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager

@@ -14,6 +14,7 @@ import androidx.room.PrimaryKey
  * @param startMinute 자정 기준 분 단위 시작 시각 (예: 09:30 -> 570)
  * @param endMinute 자정 기준 분 단위 종료 시각
  * @param autoRecord 이 수업 시간에 자동으로 녹음을 시작할지 여부
+ * @param icon 과목 아이콘 키(CourseIcons). 비어 있으면 과목명으로 짐작한 아이콘을 쓴다.
  */
 @Entity(tableName = "courses")
 data class Course(
@@ -27,6 +28,7 @@ data class Course(
     val endMinute: Int,
     val autoRecord: Boolean = true,
     val colorArgb: Int = 0xFF1B5E20.toInt(),
+    val icon: String = "",
 ) {
     val startHour get() = startMinute / 60
     val startMin get() = startMinute % 60

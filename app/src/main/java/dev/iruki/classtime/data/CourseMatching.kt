@@ -21,6 +21,8 @@ data class Session(
     val groupId: String?,
     /** 보강이면 그 ScheduleException.id. */
     val exceptionId: Long?,
+    /** 과목 아이콘 키. 비면 과목명으로 짐작한다. */
+    val icon: String = "",
 ) {
     val isMakeup get() = exceptionId != null
 }
@@ -159,6 +161,7 @@ object CourseMatching {
         courseId = id,
         groupId = groupId,
         exceptionId = null,
+        icon = icon,
     )
 
     private fun ScheduleException.toSession() = Session(

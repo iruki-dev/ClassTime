@@ -121,8 +121,45 @@ class RecordingStorage(private val context: Context) {
         }
     }.getOrDefault(false)
 
+    /**
+     * 파일이 아직 있는지. 열 수 없는 이유가 ‘없음’일 때만 false 다. 권한 문제(다른 앱이 만든 파일)
+     * 처럼 확실하지 않으면 true — 목록에서 지우는 쪽이 실수하면 되돌릴 수 없기 때문이다.
+     */
+    fun exists(uri: Uri): Boolean = try {
+        if (uri.scheme == "file") {
+            uri.path?.let { File(it).exists() } ?: false
+        } else {
+            context.contentResolver.openFileDescriptor(uri, "r")?.use { true } ?: false
+        }
+    } catch (e: java.io.FileNotFoundException) {
+        false
+    } catch (e: IllegalArgumentException) {
+        false
+    } catch (e: Exception) {
+        true
+    }
+
     companion object {
         const val ROOT = "ClassTime"
+
+        /** 이 앱이 파일명으로 쓰는 ‘과목_날짜_시각’. MediaStore 가 중복 때문에 붙이는 ‘ (1)’ 도 허용. */
+        private val NAME_PATTERN =
+            Regex("""^(.+)_(\d{4})-(\d{2})-(\d{2})_(\d{2})(\d{2})(?: ?\(\d+\))?\.[A-Za-z0-9]+$""")
+
+        /** 오디오로 보는 확장자. 폴더 검사에서 사진·문서 같은 다른 파일을 거른다. */
+        val AUDIO_EXTENSIONS = setOf("m4a", "mp4", "aac", "mp3", "wav", "ogg", "opus", "3gp", "amr", "flac")
+
+        /**
+         * 파일명에서 과목과 녹음 시작 시각을 읽는다. 이름을 바꾼 파일처럼 형식이 다르면 null.
+         * 폴더 검사로 색인을 다시 만들 때 쓴다.
+         */
+        fun parseDisplayName(name: String): Pair<String, java.time.LocalDateTime>? {
+            val m = NAME_PATTERN.matchEntire(name) ?: return null
+            val (subject, y, mo, d, h, mi) = m.destructured
+            return runCatching {
+                subject to java.time.LocalDateTime.of(y.toInt(), mo.toInt(), d.toInt(), h.toInt(), mi.toInt())
+            }.getOrNull()
+        }
 
         /** 파일 시스템에서 문제를 일으키는 문자를 _ 로 바꾸고, 비면 '기타' 로. */
         fun sanitizeSubject(name: String): String {

@@ -33,12 +33,13 @@ import androidx.compose.ui.unit.dp
 import dev.iruki.classtime.R
 import dev.iruki.classtime.data.Course
 import dev.iruki.classtime.ui.common.AppSwitch
-import dev.iruki.classtime.ui.common.CourseAvatar
+import dev.iruki.classtime.ui.common.CourseIconTile
 import dev.iruki.classtime.ui.common.GroupGap
 import dev.iruki.classtime.ui.common.GroupRow
 import dev.iruki.classtime.ui.common.RowHeadline
 import dev.iruki.classtime.ui.common.RowSupporting
-import dev.iruki.classtime.ui.theme.CourseColors
+import dev.iruki.classtime.ui.theme.AppTheme
+import dev.iruki.classtime.ui.theme.CourseIcons
 import dev.iruki.classtime.util.TimeUtils
 
 /** 시간표 칸을 눌렀을 때 뜨는 과목 상세. 자주 하는 일(자동 녹음 끄기, 휴강)을 편집 화면 없이. */
@@ -66,7 +67,7 @@ internal fun CourseSheet(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                CourseAvatar(CourseColors.of(first.colorArgb), first.subject, size = 56.dp)
+                CourseIconTile(CourseIcons.of(first.icon, first.subject), size = 56.dp, container = AppTheme.colors.group)
                 Column(Modifier.weight(1f)) {
                     Text(first.subject, style = MaterialTheme.typography.titleLarge)
                     val meta = listOf(first.professor, first.room).filter { it.isNotBlank() }

@@ -8,7 +8,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [Course::class, Recording::class, Term::class, ScheduleException::class],
-    version = 3,
+    version = 4,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -70,5 +70,18 @@ abstract class AppDatabase : RoomDatabase() {
                 MIGRATION_2_3_SQL.forEach(db::execSQL)
             }
         }
+
+        /** v3 -> v4: 과목 아이콘. 빈 값이면 과목명으로 짐작한 아이콘을 쓴다. */
+        internal val MIGRATION_3_4_SQL: List<String> = listOf(
+            "ALTER TABLE `courses` ADD COLUMN `icon` TEXT NOT NULL DEFAULT ''",
+        )
+
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_3_4_SQL.forEach(db::execSQL)
+            }
+        }
+
+        val ALL_MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
     }
 }
