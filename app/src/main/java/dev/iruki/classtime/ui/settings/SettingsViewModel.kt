@@ -5,6 +5,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import dev.iruki.classtime.ai.AiSettings
+import dev.iruki.classtime.ai.TranscriptionQueue
 import dev.iruki.classtime.data.ClassTimeRepository
 import dev.iruki.classtime.data.LibraryMaintenance
 import dev.iruki.classtime.data.RescanResult
@@ -20,6 +22,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 /** 시간표 다시 만들기 진행 단계. */
@@ -41,7 +46,14 @@ class SettingsViewModel @Inject constructor(
     private val settings: AppSettings,
     private val maintenance: LibraryMaintenance,
     private val scheduleManager: ScheduleManager,
+    aiSettings: AiSettings,
+    transcription: TranscriptionQueue,
 ) : ViewModel() {
+
+    /** 실험적 기능 줄의 요약: 꺼짐 / 켜짐 / 켜짐 · 대기 n개. */
+    val aiSummary: StateFlow<Pair<Boolean, Int>> =
+        combine(aiSettings.config, transcription.observeAll()) { c, all -> c.enabled to all.count { it.stateEnum.active } }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false to 0)
 
     val themeMode: StateFlow<ThemeMode> = settings.themeMode
     fun setThemeMode(mode: ThemeMode) = settings.setThemeMode(mode)

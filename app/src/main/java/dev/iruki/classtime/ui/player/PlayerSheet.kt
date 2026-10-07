@@ -1,5 +1,36 @@
 package dev.iruki.classtime.ui.player
 
+import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.Notes
+import androidx.compose.material.icons.rounded.GraphicEq
+import androidx.compose.material.icons.rounded.KeyboardArrowUp
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.text.input.ImeAction
+import dev.iruki.classtime.ai.AiConfig
+import dev.iruki.classtime.ai.Paragraph
+import dev.iruki.classtime.ui.ai.TranscriptPane
+import dev.iruki.classtime.ui.ai.TranscriptView
+import dev.iruki.classtime.ui.ai.findHits
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.layout.Arrangement
@@ -83,6 +114,7 @@ fun PlayerSheet(
     onShare: () -> Unit,
     onOpenFolder: () -> Unit,
     onDelete: () -> Unit,
+    text: PlayerText = PlayerText(),
 ) {
     val c = MaterialTheme.colorScheme
     var dragging by remember { mutableStateOf<Float?>(null) }
@@ -92,14 +124,47 @@ fun PlayerSheet(
     val duration = state.durationMs.coerceAtLeast(1)
     val position = dragging ?: state.positionMs.toFloat()
 
+    // 실험적 기능이 켜져 있거나 이미 텍스트가 있으면 ‘오디오 | 텍스트’ 탭을 보인다.
+    val view = text.view
+    val showTabs = text.ai.enabled || view != null
+    var tab by rememberSaveable(recording.id) { mutableStateOf(if (showTabs) text.initialTab else PlayerTab.AUDIO) }
+    var searching by rememberSaveable(recording.id) { mutableStateOf(false) }
+    var query by rememberSaveable(recording.id) { mutableStateOf("") }
+    var hitIndex by rememberSaveable(recording.id) { mutableIntStateOf(0) }
+    var showRaw by rememberSaveable(recording.id) { mutableStateOf(false) }
+    val onText = showTabs && tab == PlayerTab.TEXT
+    val reading = view?.done == true
+    val shown = when {
+        view == null -> emptyList()
+        showRaw || !view.hasCorrection -> view.raw
+        else -> view.corrected
+    }
+    val hits = remember(shown, query) { findHits(shown, query) }
+    val copiedMessage = stringResource(R.string.ai_copied)
+    val context = LocalContext.current
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = c.surfaceContainerLow,
         dragHandle = null,
     ) {
-        Column(Modifier.navigationBarsPadding().padding(bottom = 16.dp)) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(
+            (if (showTabs) Modifier.fillMaxHeight() else Modifier)
+                .navigationBarsPadding()
+                .padding(bottom = if (onText) 0.dp else 16.dp),
+        ) {
+            if (onText && searching) {
+                SearchBar(
+                    query = query,
+                    onQuery = { query = it; hitIndex = 0 },
+                    count = hits.size,
+                    index = hitIndex,
+                    onPrev = { if (hits.isNotEmpty()) hitIndex = (hitIndex - 1 + hits.size) % hits.size },
+                    onNext = { if (hits.isNotEmpty()) hitIndex = (hitIndex + 1) % hits.size },
+                    onClose = { searching = false; query = "" },
+                )
+            } else Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onDismiss) {
                     Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = stringResource(R.string.player_cd_collapse))
                 }
@@ -110,11 +175,47 @@ fun PlayerSheet(
                     maxLines = 1,
                     modifier = Modifier.weight(1f),
                 )
+                if (onText && reading) {
+                    IconButton(onClick = { searching = true }) {
+                        Icon(Icons.Rounded.Search, contentDescription = stringResource(R.string.ai_text_search))
+                    }
+                }
                 Box {
                     IconButton(onClick = { menuOpen = true }) {
                         Icon(Icons.Rounded.MoreVert, contentDescription = stringResource(R.string.action_more))
                     }
                     DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                        if (reading) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.ai_menu_copy)) },
+                                onClick = {
+                                    menuOpen = false
+                                    text.onCopy(shown)
+                                    Toast.makeText(context, copiedMessage, Toast.LENGTH_SHORT).show()
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.ai_menu_share)) },
+                                onClick = { menuOpen = false; text.onShare(shown) },
+                            )
+                            if (text.ai.canCorrect) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.ai_menu_recorrect)) },
+                                    onClick = { menuOpen = false; showRaw = false; text.onRecorrect() },
+                                )
+                            }
+                            if (text.ai.enabled) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.ai_menu_reconvert)) },
+                                    onClick = { menuOpen = false; text.onReconvert() },
+                                )
+                            }
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.ai_menu_delete_text)) },
+                                onClick = { menuOpen = false; text.onDeleteText() },
+                            )
+                            HorizontalDivider()
+                        }
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.player_menu_folder)) },
                             onClick = { menuOpen = false; onOpenFolder() },
@@ -127,9 +228,41 @@ fun PlayerSheet(
                 }
             }
 
-            Column(Modifier.padding(horizontal = 24.dp)) {
+            if (showTabs) {
+                ViewTabs(tab, onPick = { tab = it; if (it == PlayerTab.AUDIO) searching = false })
+            }
+
+            if (onText) {
+                TranscriptPane(
+                    view = view,
+                    canConvert = text.ai.enabled,
+                    paused = !text.ai.enabled,
+                    durationMs = state.durationMs,
+                    positionMs = position.toInt(),
+                    query = if (searching) query else "",
+                    hitIndex = hitIndex,
+                    showRaw = showRaw,
+                    onToggleRaw = { showRaw = !showRaw },
+                    onSeek = { onSeek(it); if (!state.playing) onToggle() },
+                    onConvert = text.onConvert,
+                    onCancel = text.onCancel,
+                    onRetry = text.onRetry,
+                    onOpenLabs = text.onOpenLabs,
+                    modifier = Modifier.weight(1f),
+                )
+                TextDock(
+                    state = state,
+                    position = position,
+                    duration = duration,
+                    onDrag = { dragging = it },
+                    onDragEnd = { dragging?.let { onSeek(it.toInt()) }; dragging = null },
+                    onToggle = onToggle,
+                    onSeekBy = onSeekBy,
+                    onSpeed = onSpeed,
+                )
+            } else Column(Modifier.padding(horizontal = 24.dp)) {
                 // 시트는 스크롤하지 않으므로, 낮은 화면에서는 위쪽 면만 줄여 조작부가 늘 보이게 한다.
-                val heroHeight = (LocalConfiguration.current.screenHeightDp - 520).coerceIn(120, 300).dp
+                val heroHeight = (LocalConfiguration.current.screenHeightDp - if (showTabs) 576 else 520).coerceIn(120, 300).dp
                 Surface(
                     color = c.surfaceContainerHigh,
                     shape = MaterialTheme.shapes.extraLarge,
@@ -240,6 +373,192 @@ fun PlayerSheet(
             },
             dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text(stringResource(R.string.action_cancel)) } },
         )
+    }
+}
+
+/** 플레이어 보기. */
+enum class PlayerTab { AUDIO, TEXT }
+
+/** 텍스트 탭에 필요한 것들(실험적 기능). 기능을 쓰지 않으면 기본값 그대로. */
+data class PlayerText(
+    val ai: AiConfig = AiConfig(),
+    val view: TranscriptView? = null,
+    val initialTab: PlayerTab = PlayerTab.AUDIO,
+    val onConvert: () -> Unit = {},
+    val onCancel: () -> Unit = {},
+    val onRetry: () -> Unit = {},
+    val onRecorrect: () -> Unit = {},
+    val onReconvert: () -> Unit = {},
+    val onDeleteText: () -> Unit = {},
+    val onCopy: (List<Paragraph>) -> Unit = {},
+    val onShare: (List<Paragraph>) -> Unit = {},
+    val onOpenLabs: () -> Unit = {},
+)
+
+/** ‘오디오 | 텍스트’ 연결 버튼(간격 2, 바깥 끝 원, 안쪽 8). */
+@Composable
+private fun ViewTabs(tab: PlayerTab, onPick: (PlayerTab) -> Unit) {
+    val c = MaterialTheme.colorScheme
+    Row(
+        Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, top = 4.dp, bottom = 8.dp).selectableGroup(),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        listOf(
+            Triple(PlayerTab.AUDIO, Icons.Rounded.GraphicEq, R.string.ai_tab_audio),
+            Triple(PlayerTab.TEXT, Icons.AutoMirrored.Rounded.Notes, R.string.ai_tab_text),
+        ).forEachIndexed { i, (t, icon, label) ->
+            val on = t == tab
+            val shape = if (i == 0) RoundedCornerShape(topStart = 20.dp, bottomStart = 20.dp, topEnd = 8.dp, bottomEnd = 8.dp)
+            else RoundedCornerShape(topStart = 8.dp, bottomStart = 8.dp, topEnd = 20.dp, bottomEnd = 20.dp)
+            Surface(
+                shape = shape,
+                color = if (on) c.secondaryContainer else Color.Transparent,
+                contentColor = if (on) c.onSecondaryContainer else c.onSurface,
+                border = if (on) null else BorderStroke(1.dp, c.outline),
+                modifier = Modifier
+                    .weight(1f)
+                    .height(40.dp)
+                    .selectable(selected = on, role = Role.Tab) { onPick(t) },
+            ) {
+                Row(horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                    Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(label), style = MaterialTheme.typography.labelLarge)
+                }
+            }
+        }
+    }
+}
+
+/** 텍스트에서 찾기: 검색어 · 결과 수 · 위아래. */
+@Composable
+private fun SearchBar(
+    query: String,
+    onQuery: (String) -> Unit,
+    count: Int,
+    index: Int,
+    onPrev: () -> Unit,
+    onNext: () -> Unit,
+    onClose: () -> Unit,
+) {
+    val c = MaterialTheme.colorScheme
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { focus.requestFocus() }
+    Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        IconButton(onClick = onClose) {
+            Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = stringResource(R.string.ai_text_search_close))
+        }
+        val label = stringResource(R.string.ai_text_search)
+        BasicTextField(
+            value = query,
+            onValueChange = onQuery,
+            singleLine = true,
+            textStyle = MaterialTheme.typography.bodyLarge.copy(color = c.onSurface),
+            cursorBrush = SolidColor(c.primary),
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            keyboardActions = KeyboardActions(onSearch = { onNext() }),
+            modifier = Modifier.weight(1f).padding(horizontal = 4.dp).focusRequester(focus).semantics { contentDescription = label },
+            decorationBox = { inner ->
+                Box {
+                    if (query.isEmpty()) Text(label, style = MaterialTheme.typography.bodyLarge, color = c.onSurfaceVariant)
+                    inner()
+                }
+            },
+        )
+        if (query.isNotEmpty()) {
+            Text(
+                if (count == 0) "0" else "${index + 1}/$count",
+                style = MaterialTheme.typography.bodyMedium,
+                color = c.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 4.dp).semantics { liveRegion = LiveRegionMode.Polite },
+            )
+        }
+        IconButton(onClick = onPrev, enabled = count > 0) {
+            Icon(Icons.Rounded.KeyboardArrowUp, contentDescription = stringResource(R.string.ai_text_search_prev))
+        }
+        IconButton(onClick = onNext, enabled = count > 0) {
+            Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = stringResource(R.string.ai_text_search_next))
+        }
+    }
+}
+
+/** 텍스트를 읽으며 듣는 아래 조작부: 얇은 막대 + [시각] 뒤로 · 재생 · 앞으로 [속도]. */
+@Composable
+private fun TextDock(
+    state: PlaybackState,
+    position: Float,
+    duration: Int,
+    onDrag: (Float) -> Unit,
+    onDragEnd: () -> Unit,
+    onToggle: () -> Unit,
+    onSeekBy: (Int) -> Unit,
+    onSpeed: (Float) -> Unit,
+) {
+    val c = MaterialTheme.colorScheme
+    var speedOpen by remember { mutableStateOf(false) }
+    Surface(color = c.surfaceContainerHigh, shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)) {
+        Column(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 16.dp)) {
+            Slider(
+                value = position.coerceIn(0f, duration.toFloat()),
+                onValueChange = onDrag,
+                onValueChangeFinished = onDragEnd,
+                valueRange = 0f..duration.toFloat(),
+                modifier = Modifier.semantics {
+                    stateDescription = TimeUtils.formatDuration(position.toLong()) + " / " + TimeUtils.formatDuration(state.durationMs.toLong())
+                },
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    TimeUtils.formatDuration(position.toLong()),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = c.onSurfaceVariant,
+                    modifier = Modifier.width(64.dp),
+                )
+                Spacer(Modifier.weight(1f))
+                IconButton(onClick = { onSeekBy(-10_000) }) {
+                    Icon(Icons.Rounded.Replay10, contentDescription = stringResource(R.string.player_cd_back10))
+                }
+                Spacer(Modifier.width(12.dp))
+                val corner by animateDpAsState(if (state.playing) 16.dp else 28.dp, spring(dampingRatio = 0.6f, stiffness = 800f), label = "dock-play")
+                Surface(
+                    onClick = onToggle,
+                    shape = RoundedCornerShape(corner),
+                    color = c.primary,
+                    contentColor = c.onPrimary,
+                    modifier = Modifier.size(56.dp),
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            if (state.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                            contentDescription = stringResource(if (state.playing) R.string.recordings_cd_pause else R.string.recordings_cd_play),
+                            modifier = Modifier.size(28.dp),
+                        )
+                    }
+                }
+                Spacer(Modifier.width(12.dp))
+                IconButton(onClick = { onSeekBy(10_000) }) {
+                    Icon(Icons.Rounded.Forward10, contentDescription = stringResource(R.string.player_cd_forward10))
+                }
+                Spacer(Modifier.weight(1f))
+                Box(Modifier.width(64.dp), contentAlignment = Alignment.CenterEnd) {
+                    val speedCd = stringResource(R.string.player_cd_speed, speedLabel(state.speed))
+                    TextButton(onClick = { speedOpen = true }, modifier = Modifier.semantics { contentDescription = speedCd }) {
+                        Text(speedLabel(state.speed))
+                    }
+                    DropdownMenu(expanded = speedOpen, onDismissRequest = { speedOpen = false }) {
+                        SPEEDS.forEach { s ->
+                            DropdownMenuItem(
+                                text = { Text(speedLabel(s)) },
+                                leadingIcon = if (s == state.speed) {
+                                    { Icon(Icons.Rounded.Check, contentDescription = null) }
+                                } else null,
+                                onClick = { speedOpen = false; onSpeed(s) },
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

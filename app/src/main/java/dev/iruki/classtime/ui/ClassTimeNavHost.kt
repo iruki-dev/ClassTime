@@ -19,6 +19,7 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -41,6 +42,9 @@ import dev.iruki.classtime.R
 import dev.iruki.classtime.ui.home.HomeScreen
 import dev.iruki.classtime.ui.player.MiniPlayer
 import dev.iruki.classtime.ui.player.PlayerSheet
+import dev.iruki.classtime.ui.player.PlayerTab
+import dev.iruki.classtime.ui.player.PlayerText
+import dev.iruki.classtime.ui.ai.AiLabsScreen
 import dev.iruki.classtime.ui.player.PlayerViewModel
 import dev.iruki.classtime.ui.recordings.RecordingsScreen
 import dev.iruki.classtime.ui.settings.SettingsScreen
@@ -68,11 +72,14 @@ private val tabs = listOf(Dest.Home, Dest.Timetable, Dest.Recordings)
 private const val ROUTE_COURSE_EDIT = "course_edit?groupId={groupId}"
 private const val ROUTE_TERM = "term"
 private const val ROUTE_SETTINGS = "settings"
+private const val ROUTE_AI = "ai"
 
 @Composable
 fun ClassTimeNavHost(
     setupIssues: List<SetupIssue>,
     onResolveIssue: (SetupIssue) -> Unit,
+    openTranscript: Long? = null,
+    onTranscriptOpened: () -> Unit = {},
 ) {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
@@ -83,8 +90,25 @@ fun ClassTimeNavHost(
     val playerVm: PlayerViewModel = hiltViewModel()
     val playback by playerVm.state.collectAsStateWithLifecycle()
     val styles by playerVm.styles.collectAsStateWithLifecycle()
+    val ai by playerVm.ai.collectAsStateWithLifecycle()
+    val transcript by playerVm.transcript.collectAsStateWithLifecycle()
     var playerOpen by remember { mutableStateOf(false) }
+    var playerTab by remember { mutableStateOf(PlayerTab.AUDIO) }
     val nowPlaying = playback.recording
+
+    // 텍스트를 열어야 할 때(변환 알림, 목록의 ‘텍스트 보기’): 녹음을 올리고 텍스트 탭으로.
+    val openText: (Long) -> Unit = { id ->
+        playerVm.openForText(id) {
+            playerTab = PlayerTab.TEXT
+            playerOpen = true
+        }
+    }
+    LaunchedEffect(openTranscript) {
+        openTranscript?.let {
+            openText(it)
+            onTranscriptOpened()
+        }
+    }
 
     // 탭 화면은 바탕(page)과 같은 색의 하단 탭을 쓴다. 상단 인셋은 각 화면이, 하단 인셋은
     // 하단 탭(또는 탭이 없는 상세 화면 자신)이 처리하도록 여기서는 인셋을 쓰지 않는다.
@@ -148,7 +172,10 @@ fun ClassTimeNavHost(
                 )
             }
             composable(Dest.Recordings.route) {
-                RecordingsScreen(onOpenPlayer = { playerOpen = true })
+                RecordingsScreen(
+                    onOpenPlayer = { playerTab = PlayerTab.AUDIO; playerOpen = true },
+                    onOpenText = openText,
+                )
             }
             composable(
                 route = ROUTE_COURSE_EDIT,
@@ -173,7 +200,11 @@ fun ClassTimeNavHost(
                     setupIssues = setupIssues,
                     onResolveIssue = onResolveIssue,
                     onBack = { navController.popBackStack() },
+                    onOpenLabs = { navController.navigate(ROUTE_AI) },
                 )
+            }
+            composable(ROUTE_AI) {
+                AiLabsScreen(onBack = { navController.popBackStack() })
             }
         }
     }
@@ -194,6 +225,23 @@ fun ClassTimeNavHost(
                 playerOpen = false
                 playerVm.delete(nowPlaying)
             },
+            text = PlayerText(
+                ai = ai,
+                view = transcript,
+                initialTab = playerTab,
+                onConvert = { playerVm.convert(nowPlaying.id) },
+                onCancel = { playerVm.cancelText(nowPlaying.id) },
+                onRetry = { playerVm.retryText(nowPlaying.id) },
+                onRecorrect = { playerVm.recorrect(nowPlaying.id) },
+                onReconvert = { playerVm.reconvert(nowPlaying.id) },
+                onDeleteText = { playerVm.deleteText(nowPlaying.id) },
+                onCopy = { playerVm.copyText(nowPlaying, it) },
+                onShare = { playerVm.shareText(nowPlaying, it) },
+                onOpenLabs = {
+                    playerOpen = false
+                    navController.navigate(ROUTE_AI)
+                },
+            ),
         )
     }
 }

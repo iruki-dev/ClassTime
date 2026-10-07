@@ -32,6 +32,7 @@ interface TranscriptionEntryPoint {
     fun transcripts(): TranscriptDao
     fun recordings(): RecordingDao
     fun queue(): TranscriptionQueue
+    fun settings(): AiSettings
 }
 
 /**
@@ -50,6 +51,8 @@ class TranscriptionWorker(context: Context, params: WorkerParameters) : Coroutin
         val finishedBefore = dao.pending().map { it.recordingId }.toSet()
 
         while (!isStopped) {
+            // ‘사용’ 스위치를 끄면 대기열은 그대로 두고 멈춘다. 다시 켜면 이어서.
+            if (!deps.settings().config.value.enabled) break
             val pending = dao.pending()
             if (pending.isEmpty()) break
             val now = System.currentTimeMillis()
@@ -129,7 +132,7 @@ class TranscriptionWorker(context: Context, params: WorkerParameters) : Coroutin
             applicationContext,
             recordingId.toInt(),
             Intent(applicationContext, MainActivity::class.java)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                 .putExtra(EXTRA_RECORDING_ID, recordingId),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )

@@ -76,7 +76,19 @@ class PlaybackController @Inject constructor(
         }
     }
 
-    private fun tryPlay(recording: Recording): Boolean {
+    /**
+     * [recording] 을 재생기에 올리되 재생은 하지 않는다(알림에서 텍스트를 열 때 등).
+     * 이미 올라 있으면 그대로 둔다.
+     */
+    fun open(recording: Recording) {
+        if (_state.value.recordingId == recording.id) return
+        scope.launch {
+            val ready = if (recording.ongoing || recording.sizeBytes == 0L) repo.forceFinalize(recording) else recording
+            withContext(Dispatchers.Main) { tryPlay(ready, start = false) }
+        }
+    }
+
+    private fun tryPlay(recording: Recording, start: Boolean = true): Boolean {
         val speed = _state.value.speed
         release()
         return try {
@@ -84,12 +96,12 @@ class PlaybackController @Inject constructor(
                 setDataSource(app, Uri.parse(recording.uri))
                 setOnCompletionListener { onCompleted() }
                 prepare()
-                start()
+                if (start) start()
             }
             player = p
-            if (speed != 1f) applySpeed(p, speed)
-            _state.value = PlaybackState(recording, playing = true, positionMs = 0, durationMs = p.duration, speed = speed)
-            startTicker()
+            if (start && speed != 1f) applySpeed(p, speed)
+            _state.value = PlaybackState(recording, playing = start, positionMs = 0, durationMs = p.duration, speed = speed)
+            if (start) startTicker()
             true
         } catch (e: Exception) {
             AppLog.e(TAG, "재생 실패: recordingId=${recording.id}", e)

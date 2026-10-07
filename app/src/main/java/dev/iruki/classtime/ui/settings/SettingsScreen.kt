@@ -39,6 +39,7 @@ import androidx.compose.material.icons.rounded.ManageSearch
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.NotificationsActive
+import androidx.compose.material.icons.rounded.Science
 import androidx.compose.material.icons.rounded.VerifiedUser
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -95,6 +96,7 @@ fun SettingsScreen(
     setupIssues: List<SetupIssue>,
     onResolveIssue: (SetupIssue) -> Unit,
     onBack: () -> Unit,
+    onOpenLabs: () -> Unit,
 ) {
     val vm: SettingsViewModel = hiltViewModel()
     val context = LocalContext.current
@@ -105,6 +107,7 @@ fun SettingsScreen(
     val rescanning by vm.rescanning.collectAsStateWithLifecycle()
     val rescanResult by vm.rescanResult.collectAsStateWithLifecycle()
     val rebuild by vm.rebuild.collectAsStateWithLifecycle()
+    val aiSummary by vm.aiSummary.collectAsStateWithLifecycle()
     var pickReminder by remember { mutableStateOf(false) }
 
     // 재설치 전 녹음·PC 에서 넣은 파일은 오디오 읽기 권한이 있어야 보인다. 거절해도 이 앱이 만든
@@ -209,6 +212,27 @@ fun SettingsScreen(
         },
     )
 
+    val labsRows = listOf<SettingRow>(
+        { i, n ->
+            val (on, pending) = aiSummary
+            GroupRow(
+                index = i, count = n,
+                onClick = onOpenLabs,
+                leading = { RowIcon(Icons.Rounded.Science) },
+                supporting = {
+                    RowSupporting(
+                        when {
+                            !on -> stringResource(R.string.ai_summary_off)
+                            pending > 0 -> stringResource(R.string.ai_summary_on_queue, pending)
+                            else -> stringResource(R.string.ai_summary_on)
+                        }
+                    )
+                },
+                trailing = { RowIcon(Icons.AutoMirrored.Rounded.KeyboardArrowRight) },
+            ) { RowHeadline(stringResource(R.string.ai_title)) }
+        },
+    )
+
     Scaffold(
         containerColor = AppTheme.colors.page,
         topBar = { DetailTopBar(stringResource(R.string.settings_title), onNavigate = onBack) },
@@ -222,6 +246,7 @@ fun SettingsScreen(
             }
             section(R.string.settings_section_storage, storageRows)
             section(R.string.settings_section_about, aboutRows)
+            section(R.string.settings_section_labs, labsRows)
         }
     }
 

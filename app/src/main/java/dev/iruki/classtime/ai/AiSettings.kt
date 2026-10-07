@@ -9,7 +9,7 @@ import org.json.JSONObject
 
 /** 화면이 그대로 그리는 AI 설정 상태. 키 자체는 담지 않는다. */
 data class AiConfig(
-    /** Groq 키가 저장돼 있으면 기능이 켜진 것. */
+    /** 저장된 Groq 키의 끝 네 자리. 없으면 기능을 켤 수 없다. */
     val groqKeyHint: String? = null,
     val nvidiaKeyHint: String? = null,
     /** 저장된 키가 나중에 거부됨(만료·삭제). 설정에서 다시 넣어야 한다. */
@@ -21,8 +21,11 @@ data class AiConfig(
     val correct: Boolean = true,
     /** 고른 교정 모델. 빈 값이면 [NvidiaClient.PREFERRED] 순서. */
     val model: String = "",
+    /** 실험적 기능 화면의 ‘사용’ 스위치. 끄면 키는 남기고 변환만 멈춘다. */
+    val switchOn: Boolean = true,
 ) {
-    val enabled get() = groqKeyHint != null
+    /** 변환을 할 수 있는 상태(키 있음 + 스위치 켬). */
+    val enabled get() = groqKeyHint != null && switchOn
     val canCorrect get() = enabled && nvidiaKeyHint != null && correct
 }
 
@@ -61,6 +64,7 @@ class AiSettings(context: Context, private val secrets: Secrets) {
     fun setAutoTranscribe(on: Boolean) = edit { putBoolean(AUTO, on) }
     fun setCorrect(on: Boolean) = edit { putBoolean(CORRECT, on) }
     fun setModel(model: String) = edit { putString(MODEL, model) }
+    fun setSwitchOn(on: Boolean) = edit { putBoolean(SWITCH, on) }
 
     /** 클라우드로 소리를 보낸다는 안내를 확인했는지. 처음 켤 때 한 번 보여 준다. */
     var consented: Boolean
@@ -110,6 +114,7 @@ class AiSettings(context: Context, private val secrets: Secrets) {
         autoTranscribe = prefs.getBoolean(AUTO, true),
         correct = prefs.getBoolean(CORRECT, true),
         model = prefs.getString(MODEL, "") ?: "",
+        switchOn = prefs.getBoolean(SWITCH, true),
     )
 
     companion object {
@@ -122,6 +127,7 @@ class AiSettings(context: Context, private val secrets: Secrets) {
         private const val AUTO = "auto_transcribe"
         private const val CORRECT = "correct"
         private const val MODEL = "model"
+        private const val SWITCH = "switch_on"
         private const val CONSENT = "consent"
         private const val USAGE = "groq_usage"
 

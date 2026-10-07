@@ -18,6 +18,7 @@ import dev.iruki.classtime.data.ClassTimeRepository
 import dev.iruki.classtime.schedule.ScheduleManager
 import dev.iruki.classtime.service.RecordingService
 import dev.iruki.classtime.ui.ClassTimeNavHost
+import dev.iruki.classtime.ai.TranscriptionWorker
 import dev.iruki.classtime.ui.theme.ClassTimeTheme
 import dev.iruki.classtime.util.AppLog
 import dev.iruki.classtime.util.AppPermissions
@@ -45,9 +46,13 @@ class MainActivity : ComponentActivity() {
             reschedule()
         }
 
+    /** 텍스트 변환 알림을 눌러 들어왔을 때 열 녹음. 한 번 열면 비운다. */
+    private var openTranscript by mutableStateOf<Long?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        if (savedInstanceState == null) readTranscriptExtra(intent)
 
         if (!AppPermissions.allRuntimeGranted(this)) {
             permissionLauncher.launch(AppPermissions.runtimePermissions())
@@ -65,9 +70,21 @@ class MainActivity : ComponentActivity() {
                 ClassTimeNavHost(
                     setupIssues = setupIssues,
                     onResolveIssue = ::resolve,
+                    openTranscript = openTranscript,
+                    onTranscriptOpened = { openTranscript = null },
                 )
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        readTranscriptExtra(intent)
+    }
+
+    private fun readTranscriptExtra(intent: Intent?) {
+        val id = intent?.getLongExtra(TranscriptionWorker.EXTRA_RECORDING_ID, -1L) ?: -1L
+        if (id > 0) openTranscript = id
     }
 
     override fun onResume() {

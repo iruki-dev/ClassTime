@@ -85,6 +85,20 @@ Kotlin + Jetpack Compose + Room 으로 작성된 네이티브 안드로이드 �
 - 앱 안에서 재생(탐색 바 포함), 이름 변경, 삭제, 공유가 됩니다.
 - 과목 폴더 전체를 한 번에 공유(드라이브·메일 등)할 수도 있습니다.
 
+### AI 텍스트 변환 (실험적 기능)
+`설정 › 실험적 기능 › AI 텍스트 변환`에서 직접 발급한 **Groq API 키**(받아 적기, Whisper large-v3)를
+넣어야 켜집니다. **NVIDIA API 키**(build.nvidia.com)를 더 넣으면 무료 추론 모델이 잘못 받아 적은
+용어·고유명사를 문맥으로 고치고 문단을 나눠 줍니다. 키는 Android Keystore 로 암호화해 이 기기에만
+저장하고 백업에서 뺍니다. 녹음은 변환할 때만 외부로 보냅니다.
+
+- 녹음이 끝나면 바로(설정) 또는 녹음 `⋮ › 텍스트로 변환`으로 대기열에 넣고, 한 번에 한 건씩 처리합니다.
+- **무료 한도 맞춤** — 20초 이상 조용한 구간(쉬는 시간 등)은 보내지 않고, 약 10분 조각을 말이 끊긴
+  곳에서 다시 인코딩 없이 잘라 보냅니다. 보낸 소리 양을 기록해 Groq 한도(시간당 120분·하루 480분)의
+  90% 안에서 나눠 보내고, 한도에 걸리면 그 시각에 저절로 이어서 합니다.
+- 앱이 꺼지거나 연결이 끊겨도 끝낸 조각은 다시 보내지 않고 이어서 합니다(진행 알림 표시).
+- 플레이어 `텍스트` 탭: 재생 위치 문단 강조, 문단 시각을 누르면 그 자리부터 재생, 검색, 복사·보내기.
+- NVIDIA 무료 모델은 자주 바뀌어 기본 모델이 없으면 다음 모델로 자동으로 넘어갑니다.
+
 ### PC 로 옮기기
 1. **USB (권장)** — 케이블 연결 → 파일 전송 모드 → `내장 저장소/Music/ClassTime/` 폴더를 통째로 복사.
    앱이 공용 `Music` 폴더에 저장하므로 별도 내보내기가 필요 없습니다.
@@ -153,11 +167,22 @@ app/src/main/java/dev/iruki/classtime/
 │   ├── ScheduleException.kt     휴강 / 보강 (1회성 예외)
 │   ├── CourseMatching.kt        "지금 어느 수업?" / "다음 수업일?" 순수 규칙 + Session
 │   ├── Converters.kt            Room enum 변환기
-│   ├── *Dao.kt / AppDatabase.kt Room (v3, MIGRATION_1_2 / 2_3 포함)
+│   ├── Transcript.kt            텍스트 변환 작업·결과 (걸음마다 저장 → 이어서 처리)
+│   ├── *Dao.kt / AppDatabase.kt Room (v5, MIGRATION_1_2 … 4_5)
 │   └── ClassTimeRepository.kt   싱글턴 데이터 접근 + 세션 계산 + 녹음 상태 StateFlow
 ├── audio/
 │   ├── AudioRecorder.kt         MediaRecorder 래퍼 + 진폭 표본화·무음 감지
 │   └── RecordingStorage.kt      MediaStore 로 Music/ClassTime/<과목> 에 저장
+├── ai/                          실험적 기능: AI 텍스트 변환
+│   ├── ChunkPlanner.kt          무음 건너뛰기 + 말 끊긴 곳에서 조각 나누기 (순수 계산)
+│   ├── AudioChunks.kt           소리 크기 곡선 디코딩 · AAC 재인코딩 없이 잘라 내기
+│   ├── QuotaLedger.kt           Groq 무료 한도 안에서 보낼 시각 계산
+│   ├── WhisperFilter.kt         무음 환각·반복 걸러 내기, 원문 문단 묶기
+│   ├── TranscriptCorrector.kt   교정 프롬프트([mm:ss] 유지) · 답 검증
+│   ├── GroqClient.kt / NvidiaClient.kt  API 호출 (multipart / 스트리밍)
+│   ├── TranscriptionEngine.kt   작업 한 걸음씩: 나누기 → 받아 적기 → 교정
+│   ├── TranscriptionQueue.kt / TranscriptionWorker.kt  WorkManager 대기열
+│   └── SecretStore.kt / AiSettings.kt  Keystore 암호화 키 · 설정 · 전송 기록
 ├── schedule/
 │   ├── ScheduleManager.kt       시간표+학기+예외 → 정확 알람. 재설정과 따라잡기를 분리
 │   ├── AlarmReceiver.kt         시작/종료 알람 수신 → 서비스 제어 + 다음 회차 재예약
@@ -172,6 +197,8 @@ app/src/main/java/dev/iruki/classtime/
 │   ├── timetable/               주간 시간표 + 수업 상세 시트 + 수업 편집(같은 시간 여러 요일)
 │   ├── term/                    학기 · 휴강 · 보강 관리
 │   ├── recordings/              과목별 녹음 목록 · 미니 플레이어 · 재생(배속, 10초 이동)
+│   ├── player/                  미니 플레이어 · 재생 화면(오디오 | 텍스트)
+│   ├── ai/                      실험적 기능 화면 · 키 시트 · 텍스트 탭 · 목록 상태 표시
 │   └── settings/                대기 모드 · 권한 점검 · 저장 위치
 └── util/
     ├── AppPermissions.kt        권한·예외 점검 모델
@@ -245,7 +272,7 @@ app/src/main/java/dev/iruki/classtime/
 
 ## 7. 테스트
 
-`./gradlew :app:testDebugUnitTest` — 110개, JVM / Robolectric 에서 실행:
+`./gradlew :app:testDebugUnitTest` — JVM / Robolectric 에서 실행:
 
 | 파일 | 검증 |
 |---|---|
@@ -259,9 +286,13 @@ app/src/main/java/dev/iruki/classtime/
 | `CourseColorsTest` | 예전 과목 색 → 새 팔레트 이전, 빨강이 과목 색으로 남지 않음, 모든 색 쌍 7:1 이상 |
 | `TimetableUiLogicTest` | 같은 시간 여러 요일 묶기/펼치기, 시간표 칸의 휴강·자동 꺼짐·보강 판정 |
 | `TermWeekTest` | ‘n주차’ 계산(개강 주 월요일 기준, 학기 밖은 없음) |
+| `ChunkPlannerTest` | 긴 무음 건너뛰기, 짧은 쉼은 유지, 숨 쉬는 자리에서 자르기, 조각 길이 한도, 바닥 소음 적응 |
+| `QuotaLedgerTest` | Groq 분당 요청·시간당/하루 소리 한도, 최소 10초 청구 |
+| `WhisperFilterTest` | 무음 끝인사 환각·반복 루프 제거, 실제 인사는 유지, 원문 문단 나누기 |
+| `TranscriptCorrectorTest` | 시각 표기 왕복, 프롬프트, 답 해석·요약 거부·시각 보정, 추론 태그 제거, Groq 응답 해석 |
+| `TranscriptionEngineTest` | 가짜 API 로 전체 흐름 — 나누기→받아 적기→교정, 한도 대기 후 재전송 없이 이어가기, 키 거부, 내려간 모델 대체, 취소 |
 
 ## 8. 다음에 붙이면 좋을 것
 
 - 녹음 중 메모·북마크 찍기 (복습할 때 그 지점으로 점프)
 - 학기 프리셋(예: "2026-1학기") 과 공휴일 자동 채우기
-- Whisper 등으로 자동 전사 및 검색
