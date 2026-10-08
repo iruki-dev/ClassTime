@@ -48,6 +48,10 @@ class WhisperFilterTest {
         assertThat(WhisperFilter.keep(thanks, speech = 0.4f)).isFalse()
         assertThat(WhisperFilter.keep(seg("감사합니다.", 0, 2_000, noSpeech = 0.05, logprob = -0.2), speech = 0.5f)).isFalse()
         assertThat(WhisperFilter.keep(seg(". . .", noSpeech = 0.05), speech = 0.5f)).isFalse()
+        // 웅성거림에서 다른 언어로 지어낸 것. 한글 문장 속 한자는 남긴다.
+        assertThat(WhisperFilter.keep(seg("開始囉。 開始囉。"), speech = 0.5f)).isFalse()
+        assertThat(WhisperFilter.keep(seg("同時に? 同時に?"), speech = 0.5f)).isFalse()
+        assertThat(WhisperFilter.keep(seg("오늘은 韓非子 의 법가 사상"), speech = 0.5f)).isTrue()
         assertThat(WhisperFilter.keep(seg("2", noSpeech = 0.72, logprob = -1.1), speech = 0.5f)).isFalse()
         // 쉬는 시간 잡담 위에 18초로 늘어진 엉뚱한 문장.
         assertThat(WhisperFilter.keep(seg("예수님의 말씀입니다.", 0, 18_000, noSpeech = 0.2), speech = 0.17f)).isFalse()

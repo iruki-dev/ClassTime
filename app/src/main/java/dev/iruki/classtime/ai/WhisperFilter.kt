@@ -75,6 +75,8 @@ object WhisperFilter {
     internal fun keep(s: RawSegment, speech: Float? = null): Boolean {
         val text = s.text.trim()
         if (text.none { it.isLetterOrDigit() }) return false
+        // 웅성거림에서 한국어 대신 중국어·일본어로 지어내는 경우(“開始囉。”). 한글 없이 한자·가나만 있으면 지운다.
+        if (text.none { it in '가'..'힣' } && text.any { it.isCjk() }) return false
         if (s.compressionRatio > 2.4) return false
         if (speech != null && speech < MIN_SPEECH) return false
         // 길고 성긴 문장은 말소리가 많을 때만 남긴다(그때는 다시 받아 적어 바꾼다).
@@ -159,6 +161,8 @@ object WhisperFilter {
         }
         return out.joinToString(" ")
     }
+
+    private fun Char.isCjk(): Boolean = this in '\u3040'..'\u30FF' || this in '\u4E00'..'\u9FFF'
 
     private fun normalize(t: String) = t.filter { it.isLetterOrDigit() }
 }
