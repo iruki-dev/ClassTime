@@ -221,3 +221,15 @@ private fun ConsentLine(icon: androidx.compose.ui.graphics.vector.ImageVector, k
         )
     }
 }
+
+/** 끝난 텍스트를 처음부터 다시 변환하기 전에. 한도를 다시 쓰고 지금 텍스트가 바뀌므로 한 번 묻는다. */
+@Composable
+fun ReconvertDialog(onDismiss: () -> Unit, onConfirm: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.ai_reconvert_title)) },
+        text = { Text(stringResource(R.string.ai_reconvert_body)) },
+        confirmButton = { TextButton(onClick = onConfirm) { Text(stringResource(R.string.ai_reconvert_confirm)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) } },
+    )
+}

@@ -66,6 +66,7 @@ import dev.iruki.classtime.R
 import dev.iruki.classtime.data.Recording
 import dev.iruki.classtime.data.Transcript
 import dev.iruki.classtime.data.TranscriptState
+import dev.iruki.classtime.ui.ai.ReconvertDialog
 import dev.iruki.classtime.ui.ai.TranscriptBadge
 import androidx.compose.material.icons.automirrored.rounded.Notes
 import androidx.compose.material.icons.rounded.AutoAwesome
@@ -76,6 +77,7 @@ import dev.iruki.classtime.ui.common.GroupRow
 import dev.iruki.classtime.ui.common.LargeHeader
 import dev.iruki.classtime.ui.common.RowHeadline
 import dev.iruki.classtime.ui.common.ScreenPadding
+import dev.iruki.classtime.ui.share.ExportDialog
 import dev.iruki.classtime.ui.theme.AppTheme
 import dev.iruki.classtime.ui.theme.CourseIcons
 import dev.iruki.classtime.util.SystemScreens
@@ -99,6 +101,8 @@ fun RecordingsScreen(onOpenPlayer: () -> Unit, onOpenText: (Long) -> Unit) {
 
     var renaming by remember { mutableStateOf<Recording?>(null) }
     var deleting by remember { mutableStateOf<Recording?>(null) }
+    var exporting by remember { mutableStateOf<List<Recording>?>(null) }
+    var reconverting by remember { mutableStateOf<Recording?>(null) }
 
     val all = groups.flatMap { it.second }
     val visible = if (filter.isEmpty()) groups else groups.filter { it.first in filter }
@@ -155,7 +159,10 @@ fun RecordingsScreen(onOpenPlayer: () -> Unit, onOpenText: (Long) -> Unit) {
                             icon = icons[subject].orEmpty(),
                             count = recordings.size,
                             totalBytes = recordings.sumOf { it.sizeBytes },
-                            onShareAll = { vm.shareAll(recordings) },
+                            onShareAll = {
+                                if (recordings.any { transcripts[it.id]?.stateEnum == TranscriptState.DONE }) exporting = recordings
+                                else vm.export(recordings)
+                            },
                         )
                     }
                     itemsIndexed(recordings, key = { _, r -> r.id }) { i, recording ->
@@ -171,12 +178,16 @@ fun RecordingsScreen(onOpenPlayer: () -> Unit, onOpenText: (Long) -> Unit) {
                                 if (playback.recordingId != recording.id) vm.toggle(recording)
                                 onOpenPlayer()
                             },
-                            onShare = { vm.share(recording) },
+                            onShare = {
+                                if (transcripts[recording.id]?.stateEnum == TranscriptState.DONE) exporting = listOf(recording)
+                                else vm.export(listOf(recording))
+                            },
                             onRename = { renaming = recording },
                             onDelete = { deleting = recording },
                             transcript = transcripts[recording.id],
                             canConvert = ai.enabled && !recording.isSilent,
                             onConvert = { vm.convert(recording) },
+                            onReconvert = { reconverting = recording },
                             onOpenText = { onOpenText(recording.id) },
                         )
                     }
@@ -207,6 +218,17 @@ fun RecordingsScreen(onOpenPlayer: () -> Unit, onOpenText: (Long) -> Unit) {
                 TextButton(onClick = { renaming = null }) { Text(stringResource(R.string.action_cancel)) }
             },
         )
+    }
+
+    exporting?.let { list ->
+        ExportDialog(
+            onDismiss = { exporting = null },
+            onSend = { audio, text -> vm.export(list, audio, text); exporting = null },
+        )
+    }
+
+    reconverting?.let { rec ->
+        ReconvertDialog(onDismiss = { reconverting = null }, onConfirm = { vm.convert(rec); reconverting = null })
     }
 
     deleting?.let { rec ->
@@ -311,6 +333,7 @@ private fun RecordingRow(
     transcript: Transcript?,
     canConvert: Boolean,
     onConvert: () -> Unit,
+    onReconvert: () -> Unit,
     onOpenText: () -> Unit,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
@@ -376,6 +399,13 @@ private fun RecordingRow(
                             leadingIcon = { Icon(Icons.AutoMirrored.Rounded.Notes, contentDescription = null) },
                             onClick = { menuOpen = false; onOpenText() },
                         )
+                        if (canConvert && transcript?.stateEnum == TranscriptState.DONE) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.ai_menu_reconvert)) },
+                                leadingIcon = { Icon(Icons.Rounded.AutoAwesome, contentDescription = null) },
+                                onClick = { menuOpen = false; onReconvert() },
+                            )
+                        }
                         HorizontalDivider()
                     } else if (canConvert && !liveNow) {
                         DropdownMenuItem(

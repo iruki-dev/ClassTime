@@ -1,13 +1,11 @@
 package dev.iruki.classtime.ui.recordings
 
 import android.content.Context
-import android.content.Intent
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
-import dev.iruki.classtime.R
 import dev.iruki.classtime.audio.PlaybackController
 import dev.iruki.classtime.audio.PlaybackState
 import dev.iruki.classtime.audio.RecordingStorage
@@ -16,7 +14,9 @@ import dev.iruki.classtime.data.Recording
 import dev.iruki.classtime.data.Transcript
 import dev.iruki.classtime.ai.AiConfig
 import dev.iruki.classtime.ai.AiSettings
+import dev.iruki.classtime.ai.TextFiles
 import dev.iruki.classtime.ai.TranscriptionQueue
+import dev.iruki.classtime.ui.share.RecordingExport
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -34,6 +34,8 @@ class RecordingsViewModel @Inject constructor(
     private val storage: RecordingStorage,
     private val player: PlaybackController,
     private val transcription: TranscriptionQueue,
+    private val textFiles: TextFiles,
+    private val export: RecordingExport,
     aiSettings: AiSettings,
 ) : ViewModel() {
 
@@ -94,38 +96,16 @@ class RecordingsViewModel @Inject constructor(
         if (trimmed.isBlank()) return@launch
         val newFileName = if (trimmed.endsWith(".m4a")) trimmed else "$trimmed.m4a"
         if (storage.rename(Uri.parse(recording.uri), newFileName)) {
+            runCatching { textFiles.rename(recording, newFileName) }
             repo.updateRecording(recording.copy(fileName = newFileName))
         }
     }
 
-    /** 다른 앱(드라이브, 메일, 카톡 등)으로 파일 보내기. PC 로 옮기는 또 하나의 경로. */
-    fun share(recording: Recording) {
-        val intent = Intent(Intent.ACTION_SEND).apply {
-            type = "audio/mp4"
-            putExtra(Intent.EXTRA_STREAM, Uri.parse(recording.uri))
-            putExtra(Intent.EXTRA_SUBJECT, recording.fileName)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-        app.startActivity(
-            Intent.createChooser(intent, app.getString(R.string.recordings_share_chooser))
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        )
-    }
-
-    /** 여러 개를 한 번에 보내기 (과목 폴더 통째로 옮길 때). */
-    fun shareAll(recordings: List<Recording>) {
-        if (recordings.isEmpty()) return
-        if (recordings.size == 1) return share(recordings.first())
-        val uris = ArrayList(recordings.map { Uri.parse(it.uri) })
-        val intent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
-            type = "audio/mp4"
-            putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-        app.startActivity(
-            Intent.createChooser(intent, app.getString(R.string.recordings_share_chooser))
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        )
-    }
+    /**
+     * 다른 앱(드라이브, 메일, 카톡 등)으로 보내기. PC 로 옮기는 또 하나의 경로.
+     * 여러 개면 과목 폴더 통째로. 텍스트가 있으면 화면이 무엇을 보낼지 먼저 묻는다.
+     */
+    fun export(recordings: List<Recording>, audio: Boolean = true, text: Boolean = false) =
+        viewModelScope.launch { export.send(recordings, audio, text) }
 
 }

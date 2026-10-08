@@ -74,6 +74,16 @@ class TranscriptionEngineTest {
         }
     }
 
+    /** 저장한 텍스트 파일(녹음 id → 내용). */
+    private val written = mutableMapOf<Long, String>()
+    private val files = object : TextFiles {
+        override fun write(recording: Recording, paragraphs: List<Paragraph>) =
+            null.also { written[recording.id] = TranscriptText.format(recording, paragraphs) }
+        override fun find(recording: Recording) = null
+        override fun delete(recording: Recording) { written.remove(recording.id) }
+        override fun rename(recording: Recording, newFileName: String) = Unit
+    }
+
     private lateinit var engine: TranscriptionEngine
 
     @Before
@@ -84,7 +94,7 @@ class TranscriptionEngineTest {
         settings.setGroqKey("gsk_test1234")
         engine = TranscriptionEngine(
             context, db.transcriptDao(), db.recordingDao(), settings,
-            audio = audio, groq = groq, clock = { now },
+            audio = audio, groq = groq, files = files, clock = { now },
         )
         db.recordingDao().insert(
             Recording(id = 1, subject = "자료구조", professor = "김교수", fileName = "a.m4a", uri = "content://x/1",
@@ -131,6 +141,8 @@ class TranscriptionEngineTest {
         val paragraphs = TranscriptJson.paragraphs(t.paragraphs)
         assertThat(paragraphs.first().text).contains("조각 1 첫 문장")
         assertThat(paragraphs.first().startMs).isEqualTo(segments.first().startMs)
+        // 녹음 옆에 텍스트 파일로도 남는다.
+        assertThat(written[1L]).contains("조각 1 첫 문장")
         // 한도 기록이 남는다(조각마다).
         assertThat(settings.usage()).hasSize(plan.size)
     }

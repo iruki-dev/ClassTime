@@ -55,6 +55,8 @@ import dev.iruki.classtime.ui.player.PlayerSheet
 import dev.iruki.classtime.ui.player.PlayerTab
 import dev.iruki.classtime.ui.player.PlayerText
 import dev.iruki.classtime.ui.ai.AiLabsScreen
+import dev.iruki.classtime.ui.ai.ReconvertDialog
+import dev.iruki.classtime.ui.share.ExportDialog
 import dev.iruki.classtime.ui.player.PlayerViewModel
 import dev.iruki.classtime.ui.recordings.RecordingsScreen
 import dev.iruki.classtime.ui.settings.SettingsScreen
@@ -103,6 +105,8 @@ fun ClassTimeNavHost(
     val ai by playerVm.ai.collectAsStateWithLifecycle()
     val transcript by playerVm.transcript.collectAsStateWithLifecycle()
     var playerOpen by remember { mutableStateOf(false) }
+    var exportingNow by remember { mutableStateOf(false) }
+    var reconvertingNow by remember { mutableStateOf(false) }
     // 플레이어에서 마지막으로 본 탭. 다시 열면 그 탭으로 열린다.
     var playerTab by rememberSaveable { mutableStateOf(PlayerTab.AUDIO) }
     val nowPlaying = playback.recording
@@ -242,6 +246,19 @@ fun ClassTimeNavHost(
         }
     }
 
+    if (exportingNow && nowPlaying != null) {
+        ExportDialog(
+            onDismiss = { exportingNow = false },
+            onSend = { audio, text -> playerVm.export(nowPlaying, audio, text); exportingNow = false },
+        )
+    }
+    if (reconvertingNow && nowPlaying != null) {
+        ReconvertDialog(
+            onDismiss = { reconvertingNow = false },
+            onConfirm = { playerVm.reconvert(nowPlaying.id); reconvertingNow = false },
+        )
+    }
+
     if (playerOpen && nowPlaying != null) {
         PlayerSheet(
             recording = nowPlaying,
@@ -252,7 +269,7 @@ fun ClassTimeNavHost(
             onSeek = playerVm::seekTo,
             onSeekBy = playerVm::seekBy,
             onSpeed = playerVm::setSpeed,
-            onShare = { playerVm.share(nowPlaying) },
+            onShare = { if (transcript?.done == true) exportingNow = true else playerVm.export(nowPlaying) },
             onOpenFolder = playerVm::openFolder,
             onDelete = {
                 playerOpen = false
@@ -266,7 +283,7 @@ fun ClassTimeNavHost(
                 onConvert = { playerVm.convert(nowPlaying.id) },
                 onCancel = { playerVm.cancelText(nowPlaying.id) },
                 onRetry = { playerVm.retryText(nowPlaying.id) },
-                onReconvert = { playerVm.reconvert(nowPlaying.id) },
+                onReconvert = { reconvertingNow = true },
                 onDeleteText = { playerVm.deleteText(nowPlaying.id) },
                 onCopy = { playerVm.copyText(nowPlaying, it) },
                 onShare = { playerVm.shareText(nowPlaying, it) },

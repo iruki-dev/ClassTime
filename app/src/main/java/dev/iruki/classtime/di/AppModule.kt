@@ -17,6 +17,8 @@ import dev.iruki.classtime.data.TermDao
 import dev.iruki.classtime.data.TranscriptDao
 import dev.iruki.classtime.ai.AiSettings
 import dev.iruki.classtime.ai.SecretStore
+import dev.iruki.classtime.ai.TextFiles
+import dev.iruki.classtime.ai.TranscriptFiles
 import dev.iruki.classtime.ai.TranscriptionEngine
 import dev.iruki.classtime.ai.TranscriptionQueue
 import dev.iruki.classtime.util.AppSettings
@@ -73,7 +75,8 @@ object AppModule {
         transcripts: TranscriptDao,
         recordings: RecordingDao,
         settings: AiSettings,
-    ): TranscriptionEngine = TranscriptionEngine(context, transcripts, recordings, settings)
+        files: TextFiles,
+    ): TranscriptionEngine = TranscriptionEngine(context, transcripts, recordings, settings, files = files)
 
     @Provides
     @Singleton
@@ -81,7 +84,13 @@ object AppModule {
         @ApplicationContext context: Context,
         transcripts: TranscriptDao,
         settings: AiSettings,
-    ): TranscriptionQueue = TranscriptionQueue(context, transcripts, settings)
+        recordings: RecordingDao,
+        files: TextFiles,
+    ): TranscriptionQueue = TranscriptionQueue(context, transcripts, settings, recordings, files)
+
+    @Provides
+    @Singleton
+    fun provideTextFiles(@ApplicationContext context: Context): TextFiles = TranscriptFiles(context)
 
     @Provides
     @Singleton

@@ -8,6 +8,7 @@ import dagger.hilt.android.HiltAndroidApp
 import dev.iruki.classtime.data.ClassTimeRepository
 import dev.iruki.classtime.di.ApplicationScope
 import dev.iruki.classtime.util.AppLog
+import dev.iruki.classtime.ai.TranscriptionQueue
 import javax.inject.Inject
 import dev.iruki.classtime.widget.TodayWidget
 import kotlinx.coroutines.CoroutineScope
@@ -26,6 +27,8 @@ class ClassTimeApp : Application() {
     /** 마무리 작업 전용 스코프. 자세한 설명은 [ApplicationScope]. */
     @Inject @ApplicationScope lateinit var applicationScope: CoroutineScope
 
+    @Inject lateinit var transcription: TranscriptionQueue
+
     override fun onCreate() {
         super.onCreate()
         createChannels()
@@ -36,6 +39,18 @@ class ClassTimeApp : Application() {
                 .onFailure { AppLog.e(TAG, "시작 시 미완료 녹음 복구 실패", it) }
         }
         keepWidgetInSync()
+        backfillTranscriptFiles()
+    }
+
+    /** 텍스트 파일 저장이 생기기 전에 끝난 변환도 파일로 남긴다. 한 번만. */
+    private fun backfillTranscriptFiles() {
+        val prefs = getSharedPreferences("transcript_files", MODE_PRIVATE)
+        if (prefs.getBoolean(KEY_BACKFILLED, false)) return
+        applicationScope.launch {
+            runCatching { transcription.backfillFiles() }
+                .onSuccess { prefs.edit().putBoolean(KEY_BACKFILLED, true).apply() }
+                .onFailure { AppLog.w(TAG, "텍스트 파일 채우기 실패", it) }
+        }
     }
 
     /**
@@ -91,6 +106,7 @@ class ClassTimeApp : Application() {
 
     companion object {
         private const val TAG = "ClassTimeApp"
+        private const val KEY_BACKFILLED = "backfilled_v1"
 
         const val CHANNEL_RECORDING = "recording"
         const val CHANNEL_WARNING = "warning"

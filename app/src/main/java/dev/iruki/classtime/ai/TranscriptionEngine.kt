@@ -28,6 +28,7 @@ class TranscriptionEngine(
     private val audio: AudioSource = AudioChunks(context),
     private val groq: SpeechToText = GroqClient(),
     private val ledger: QuotaLedger = QuotaLedger(),
+    private val files: TextFiles = TranscriptFiles(context),
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
     private val detector = SpeechDetector()
@@ -49,7 +50,7 @@ class TranscriptionEngine(
             when {
                 job.plan.isBlank() -> prepare(job, recording, isStopped)
                 job.chunksDone < TranscriptJson.plan(job.plan).size -> transcribeNext(job, recording, isStopped)
-                else -> finishTranscribing(job)
+                else -> finishTranscribing(job, recording)
             }
             Outcome.Progressed
         } catch (e: AiException) {
@@ -212,7 +213,7 @@ class TranscriptionEngine(
     // --- 3. 끝 ---
 
     /** 모든 조각을 받아 적었다: 문단으로 묶어 끝낸다. 예전 버전의 ‘교정 중’ 작업도 여기로 온다. */
-    private suspend fun finishTranscribing(job: Transcript) {
+    private suspend fun finishTranscribing(job: Transcript, recording: Recording) {
         chunkDir(job.recordingId).deleteRecursively()
         val segments = TranscriptJson.segments(job.segments)
         if (segments.isEmpty()) {
@@ -220,10 +221,14 @@ class TranscriptionEngine(
             return
         }
         val latest = transcripts.get(job.recordingId) ?: return
+        val paragraphs = Paragraphs.fromSegments(segments)
+        // 녹음 옆(Documents/ClassTime/<과목>)에 텍스트 파일로도 남긴다. 못 써도 변환은 끝난 것으로.
+        runCatching { files.write(recording, paragraphs) }
+            .onFailure { AppLog.w(TAG, "텍스트 파일을 쓰지 못했습니다 id=${job.recordingId}", it) }
         save(
             latest.copy(
                 state = TranscriptState.DONE.name,
-                paragraphs = TranscriptJson.paragraphs(Paragraphs.fromSegments(segments)),
+                paragraphs = TranscriptJson.paragraphs(paragraphs),
                 model = "",
                 error = "",
                 waitUntil = 0,
