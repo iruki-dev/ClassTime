@@ -106,6 +106,11 @@ class RecordingService : Service() {
         val plannedEndAt: Long,
         /** 지금까지 연장한 분. 0 보다 크면 시간표의 종료 알람을 무시한다. */
         val extendedMinutes: Int = 0,
+        /**
+         * 이 녹음이 덮는 시간표상 수업(오늘)의 ‘이번엔 녹음 안 함’ 키. 수업 중에 사용자가 직접
+         * 멈추면 이 키를 걸어, 앱을 다시 열었을 때 따라잡기가 같은 수업을 또 녹음하지 않게 한다.
+         */
+        val skipKey: String? = null,
     )
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -156,7 +161,10 @@ class RecordingService : Service() {
                 }
             }
 
-            ACTION_STOP -> finalizeAndSettle("stop-intent")
+            ACTION_STOP -> {
+                rememberEarlyStop()
+                finalizeAndSettle("stop-intent")
+            }
         }
         return START_NOT_STICKY
     }
@@ -221,7 +229,11 @@ class RecordingService : Service() {
         val auto: Boolean,
         /** 계획된 종료 분(minute-of-day). 없으면 상한만 적용. */
         val plannedEndMinute: Int?,
+        /** 지금 시간표상 수업이 있으면 그 수업의 오늘 skip 키. */
+        val skipKey: String? = null,
     )
+
+    private fun today(): Long = java.time.LocalDate.now().toEpochDay()
 
     private suspend fun resolve(spec: Spec): Resolved = when (spec) {
         is Spec.Auto -> {
@@ -232,6 +244,7 @@ class RecordingService : Service() {
                 courseId = c?.id,
                 auto = true,
                 plannedEndMinute = c?.endMinute,
+                skipKey = c?.let { AppSettings.courseSkipKey(it.id, today()) },
             )
         }
         is Spec.Makeup -> {
@@ -243,6 +256,7 @@ class RecordingService : Service() {
                 courseId = null,
                 auto = true,
                 plannedEndMinute = e?.endMinute,
+                skipKey = e?.let { AppSettings.makeupSkipKey(it.id, today()) },
             )
         }
         is Spec.Manual -> {
@@ -255,6 +269,11 @@ class RecordingService : Service() {
                 courseId = s?.courseId,
                 auto = false,
                 plannedEndMinute = null,
+                // 수업 시간에 직접 녹음했다면 그 수업도 ‘이미 녹음함’으로 본다.
+                skipKey = s?.let { session ->
+                    session.exceptionId?.let { AppSettings.makeupSkipKey(it, today()) }
+                        ?: session.courseId?.let { AppSettings.courseSkipKey(it, today()) }
+                },
             )
         }
     }
@@ -311,6 +330,7 @@ class RecordingService : Service() {
             startedAt = startedAt,
             auto = r.auto,
             plannedEndAt = plannedEndAt(startedAt, r.plannedEndMinute),
+            skipKey = r.skipKey,
         )
         session = s
 
@@ -391,6 +411,23 @@ class RecordingService : Service() {
 
     // --- 마무리 ---
 
+    /**
+     * 사용자가 수업이 끝나기 전에 직접 멈췄다(수업이 일찍 끝남 등). 오늘 그 수업은 끝난 것으로
+     * 표시한다 — 그러지 않으면 수업 시간 안에 앱을 열 때마다 ‘놓친 녹음 따라잡기’가 다시 녹음을 켠다.
+     */
+    private fun rememberEarlyStop() {
+        val s = session ?: return
+        val key = s.skipKey ?: return
+        if (scheduledEndAhead(s)) {
+            settings.skipOnce(key)
+            AppLog.i(TAG, "수업 중 직접 정지 - 오늘 이 수업은 다시 녹음하지 않습니다")
+        }
+    }
+
+    /** 시간표상 끝(연장 전)이 아직 오지 않았는지. 끝을 모르면 안전하게 true. */
+    private fun scheduledEndAhead(s: ActiveSession): Boolean =
+        s.plannedEndAt <= 0L || System.currentTimeMillis() < s.plannedEndAt - s.extendedMinutes * 60_000L
+
     /** 어디서 몇 번 불려도 안전. 마무리는 앱 스코프에서 돌아 서비스가 죽어도 완료된다. */
     private fun finalizeAndSettle(reason: String) {
         RecordingWatchdogReceiver.disarm(this)
@@ -431,7 +468,7 @@ class RecordingService : Service() {
 
         val result = runCatching { recorder.stop() }.getOrNull()
         val size = runCatching { storage.finalize(s.uri, s.legacyPath?.let { File(it) }) }
-            .getOrDefault(0L)
+            .getOrNull() ?: 0L
         val duration = result?.durationMs?.takeIf { it > 0 }
             ?: runCatching { storage.probeDurationMs(s.uri) }.getOrDefault(0L)
         val peak = result?.peakAmplitude ?: Recording.UNKNOWN_AMPLITUDE

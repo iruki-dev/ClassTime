@@ -105,11 +105,10 @@ class TranscriptionWorker(context: Context, params: WorkerParameters) : Coroutin
         val ctx = applicationContext
         val (text, done, total) = when (job.stateEnum) {
             TranscriptState.QUEUED, TranscriptState.PREPARING -> Triple(ctx.getString(R.string.ai_stage_preparing), 0, 0)
-            TranscriptState.TRANSCRIBING -> {
+            else -> {
                 val total = TranscriptJson.plan(job.plan).size
                 Triple(ctx.getString(R.string.ai_stage_transcribing), job.chunksDone, total)
             }
-            else -> Triple(ctx.getString(R.string.ai_stage_correcting), job.sectionsDone, job.sectionsTotal)
         }
         val n: Notification = NotificationCompat.Builder(ctx, ClassTimeApp.CHANNEL_TRANSCRIPTION)
             .setSmallIcon(R.drawable.ic_launcher_foreground)

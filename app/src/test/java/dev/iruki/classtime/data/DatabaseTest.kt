@@ -142,6 +142,20 @@ class DatabaseTest {
     }
 
     @Test
+    fun finalize_keepsKnownSize_whenTheFileCannotBeRead() = runTest {
+        // 읽을 수 없는 파일(권한·삭제)을 다시 확정해도 0 B 로 덮지 않는다.
+        val storage = dev.iruki.classtime.audio.RecordingStorage(ApplicationProvider.getApplicationContext())
+        val id = recordingDao.insert(
+            sampleRecording("운영체제", ongoing = false).copy(
+                uri = "file:///no/such/file.m4a", sizeBytes = 51_000_000, durationMs = 4_492_000,
+            )
+        )
+        val fixed = finalizeRecordingRow(recordingDao, storage, recordingDao.getById(id)!!)
+        assertThat(fixed.sizeBytes).isEqualTo(51_000_000)
+        assertThat(recordingDao.getById(id)!!.sizeBytes).isEqualTo(51_000_000)
+    }
+
+    @Test
     fun recordings_listedNewestFirst() = runTest {
         recordingDao.insert(sampleRecording("옛날", startedAt = 1_000L, ongoing = false))
         recordingDao.insert(sampleRecording("최근", startedAt = 9_000L, ongoing = false))

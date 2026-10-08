@@ -1,6 +1,15 @@
 package dev.iruki.classtime.ui
 
 import androidx.annotation.StringRes
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
+import androidx.compose.ui.platform.LocalContext
+import dev.iruki.classtime.audio.PlaybackController
+import dev.iruki.classtime.util.AppPermissions
+import dev.iruki.classtime.util.SystemScreens
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.padding
@@ -23,6 +32,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -93,8 +103,30 @@ fun ClassTimeNavHost(
     val ai by playerVm.ai.collectAsStateWithLifecycle()
     val transcript by playerVm.transcript.collectAsStateWithLifecycle()
     var playerOpen by remember { mutableStateOf(false) }
-    var playerTab by remember { mutableStateOf(PlayerTab.AUDIO) }
+    // 플레이어에서 마지막으로 본 탭. 다시 열면 그 탭으로 열린다.
+    var playerTab by rememberSaveable { mutableStateOf(PlayerTab.AUDIO) }
     val nowPlaying = playback.recording
+
+    // 재생하지 못하면 이유를 알린다. 권한 문제(들여온 파일)면 바로 허용할 수 있게.
+    val snackbar = remember { SnackbarHostState() }
+    val context = LocalContext.current
+    val noAccessText = stringResource(R.string.player_no_access)
+    val unreadableText = stringResource(R.string.player_unreadable)
+    val allowText = stringResource(R.string.ai_action_allow_access)
+    val access = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (!granted) SystemScreens.openAppDetails(context)
+    }
+    LaunchedEffect(playerVm) {
+        playerVm.problems.collect { problem ->
+            val noAccess = problem == PlaybackController.Problem.NO_ACCESS
+            val result = snackbar.showSnackbar(
+                message = if (noAccess) noAccessText else unreadableText,
+                actionLabel = if (noAccess) allowText else null,
+                withDismissAction = !noAccess,
+            )
+            if (result == SnackbarResult.ActionPerformed) access.launch(AppPermissions.audioReadPermission())
+        }
+    }
 
     // 텍스트를 열어야 할 때(변환 알림, 목록의 ‘텍스트 보기’): 녹음을 올리고 텍스트 탭으로.
     val openText: (Long) -> Unit = { id ->
@@ -115,6 +147,7 @@ fun ClassTimeNavHost(
     Scaffold(
         containerColor = AppTheme.colors.page,
         contentWindowInsets = WindowInsets(0),
+        snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
             Column {
                 if (onTab && nowPlaying != null) {
@@ -173,7 +206,7 @@ fun ClassTimeNavHost(
             }
             composable(Dest.Recordings.route) {
                 RecordingsScreen(
-                    onOpenPlayer = { playerTab = PlayerTab.AUDIO; playerOpen = true },
+                    onOpenPlayer = { playerOpen = true },
                     onOpenText = openText,
                 )
             }
@@ -228,11 +261,11 @@ fun ClassTimeNavHost(
             text = PlayerText(
                 ai = ai,
                 view = transcript,
-                initialTab = playerTab,
+                tab = playerTab,
+                onTab = { playerTab = it },
                 onConvert = { playerVm.convert(nowPlaying.id) },
                 onCancel = { playerVm.cancelText(nowPlaying.id) },
                 onRetry = { playerVm.retryText(nowPlaying.id) },
-                onRecorrect = { playerVm.recorrect(nowPlaying.id) },
                 onReconvert = { playerVm.reconvert(nowPlaying.id) },
                 onDeleteText = { playerVm.deleteText(nowPlaying.id) },
                 onCopy = { playerVm.copyText(nowPlaying, it) },

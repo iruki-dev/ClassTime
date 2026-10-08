@@ -16,13 +16,11 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
-import androidx.compose.material.icons.rounded.AutoFixHigh
 import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.HourglassTop
 import androidx.compose.material.icons.rounded.Info
-import androidx.compose.material.icons.rounded.Psychology
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -71,10 +69,8 @@ fun AiLabsScreen(onBack: () -> Unit) {
     val config by vm.config.collectAsStateWithLifecycle()
     val queue by vm.queueItems.collectAsStateWithLifecycle()
     val quota by vm.quota.collectAsStateWithLifecycle()
-    var keySheet by remember { mutableStateOf<KeyService?>(null) }
-    var pickModel by remember { mutableStateOf(false) }
+    var keySheet by remember { mutableStateOf(false) }
     val hasGroq = config.groqKeyHint != null
-    val hasNvidia = config.nvidiaKeyHint != null
 
     val keyRows = listOf<LabsRow>(
         { i, n ->
@@ -82,14 +78,7 @@ fun AiLabsScreen(onBack: () -> Unit) {
                 i, n, Icons.Rounded.GraphicEq, "Groq",
                 summary = keySummary(R.string.ai_key_groq_role, config.groqKeyHint, config.groqRejected, required = true),
                 attention = !hasGroq || config.groqRejected,
-            ) { keySheet = KeyService.GROQ }
-        },
-        { i, n ->
-            KeyRow(
-                i, n, Icons.Rounded.AutoFixHigh, "NVIDIA",
-                summary = keySummary(R.string.ai_key_nvidia_role, config.nvidiaKeyHint, config.nvidiaRejected, required = false),
-                attention = config.nvidiaRejected,
-            ) { keySheet = KeyService.NVIDIA }
+            ) { keySheet = true }
         },
     )
 
@@ -102,30 +91,6 @@ fun AiLabsScreen(onBack: () -> Unit) {
                 trailing = { AppSwitch(config.autoTranscribe, vm::setAutoTranscribe) },
                 minHeight = 56.dp,
             ) { RowHeadline(stringResource(R.string.ai_auto)) }
-        },
-        { i, n ->
-            GroupRow(
-                index = i, count = n,
-                onClick = if (hasNvidia) ({ vm.setCorrect(!config.correct) }) else null,
-                leading = { RowIcon(Icons.Rounded.AutoFixHigh) },
-                supporting = {
-                    RowSupporting(stringResource(if (hasNvidia) R.string.ai_correct_summary else R.string.ai_correct_needs_key))
-                },
-                trailing = {
-                    AppSwitch(checked = hasNvidia && config.correct, onCheckedChange = vm::setCorrect, enabled = hasNvidia)
-                },
-            ) { RowHeadline(stringResource(R.string.ai_correct)) }
-        },
-        { i, n ->
-            val current = vm.models.collectAsStateWithLifecycle().value
-            val name = AiLabsViewModel.modelName(config.model.ifBlank { current.first().id })
-            GroupRow(
-                index = i, count = n,
-                onClick = if (hasNvidia && config.correct) ({ vm.refreshModels(); pickModel = true }) else null,
-                leading = { RowIcon(Icons.Rounded.Psychology) },
-                supporting = { RowSupporting(name) },
-                trailing = { RowIcon(Icons.AutoMirrored.Rounded.KeyboardArrowRight) },
-            ) { RowHeadline(stringResource(R.string.ai_model)) }
         },
     )
 
@@ -161,20 +126,11 @@ fun AiLabsScreen(onBack: () -> Unit) {
         }
     }
 
-    keySheet?.let { service ->
+    if (keySheet) {
         KeySheet(
-            service = service,
-            savedHint = if (service == KeyService.GROQ) config.groqKeyHint else config.nvidiaKeyHint,
+            savedHint = config.groqKeyHint,
             vm = vm,
-            onDismiss = { keySheet = null; vm.resetKeyCheck() },
-        )
-    }
-    if (pickModel) {
-        ModelDialog(
-            models = vm.models.collectAsStateWithLifecycle().value,
-            selected = config.model.ifBlank { vm.models.value.first().id },
-            onDismiss = { pickModel = false },
-            onPick = { vm.setModel(it); pickModel = false },
+            onDismiss = { keySheet = false; vm.resetKeyCheck() },
         )
     }
 }
@@ -185,8 +141,7 @@ private fun keySummary(role: Int, hint: String?, rejected: Boolean, required: Bo
     return when {
         rejected -> stringResource(R.string.ai_key_rejected, r)
         hint != null -> stringResource(R.string.ai_key_saved, r, hint)
-        required -> stringResource(R.string.ai_key_needed, r)
-        else -> stringResource(R.string.ai_key_optional, r)
+        else -> stringResource(R.string.ai_key_needed, r).takeIf { required } ?: r
     }
 }
 
@@ -220,7 +175,6 @@ private fun QueueRow(index: Int, count: Int, item: QueueItem, onCancel: () -> Un
     val (icon, tint) = when {
         quotaWait -> Icons.Rounded.HourglassTop to AppTheme.colors.caution
         t.stateEnum == TranscriptState.QUEUED -> Icons.Rounded.Schedule to c.onSurfaceVariant
-        t.stateEnum == TranscriptState.CORRECTING -> Icons.Rounded.AutoFixHigh to c.primary
         else -> Icons.Rounded.GraphicEq to c.primary
     }
     val title = "${item.recording.subject} · ${recordingTitle(item.recording.startedAt)}"

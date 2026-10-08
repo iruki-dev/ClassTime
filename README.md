@@ -87,17 +87,17 @@ Kotlin + Jetpack Compose + Room 으로 작성된 네이티브 안드로이드 �
 
 ### AI 텍스트 변환 (실험적 기능)
 `설정 › 실험적 기능 › AI 텍스트 변환`에서 직접 발급한 **Groq API 키**(받아 적기, Whisper large-v3)를
-넣어야 켜집니다. **NVIDIA API 키**(build.nvidia.com)를 더 넣으면 무료 추론 모델이 잘못 받아 적은
-용어·고유명사를 문맥으로 고치고 문단을 나눠 줍니다. 키는 Android Keystore 로 암호화해 이 기기에만
-저장하고 백업에서 뺍니다. 녹음은 변환할 때만 외부로 보냅니다.
+넣어야 켜집니다. 키는 Android Keystore 로 암호화해 이 기기에만 저장하고 백업에서 뺍니다.
+녹음은 변환할 때만 외부로 보냅니다. 받아 적은 글은 쉬는 자리에서 문단으로 나눕니다.
 
 - 녹음이 끝나면 바로(설정) 또는 녹음 `⋮ › 텍스트로 변환`으로 대기열에 넣고, 한 번에 한 건씩 처리합니다.
 - **무료 한도 맞춤** — 20초 이상 조용한 구간(쉬는 시간 등)은 보내지 않고, 약 10분 조각을 말이 끊긴
   곳에서 다시 인코딩 없이 잘라 보냅니다. 보낸 소리 양을 기록해 Groq 한도(시간당 120분·하루 480분)의
   90% 안에서 나눠 보내고, 한도에 걸리면 그 시각에 저절로 이어서 합니다.
 - 앱이 꺼지거나 연결이 끊겨도 끝낸 조각은 다시 보내지 않고 이어서 합니다(진행 알림 표시).
-- 플레이어 `텍스트` 탭: 재생 위치 문단 강조, 문단 시각을 누르면 그 자리부터 재생, 검색, 복사·보내기.
-- NVIDIA 무료 모델은 자주 바뀌어 기본 모델이 없으면 다음 모델로 자동으로 넘어갑니다.
+- 플레이어 `텍스트` 탭: 재생 위치 문단 강조, 문단을 누르면 그 자리부터 재생, 검색, 복사·보내기.
+- 폴더 검사로 들여온 파일도 변환됩니다. AAC 가 아니면(mp3·wav 등) 조각을 AAC 로 바꿔 보내고,
+  읽을 권한이 없으면 그 이유와 ‘권한 허용’을 보여 줍니다.
 
 ### PC 로 옮기기
 1. **USB (권장)** — 케이블 연결 → 파일 전송 모드 → `내장 저장소/Music/ClassTime/` 폴더를 통째로 복사.
@@ -175,12 +175,11 @@ app/src/main/java/dev/iruki/classtime/
 │   └── RecordingStorage.kt      MediaStore 로 Music/ClassTime/<과목> 에 저장
 ├── ai/                          실험적 기능: AI 텍스트 변환
 │   ├── ChunkPlanner.kt          무음 건너뛰기 + 말 끊긴 곳에서 조각 나누기 (순수 계산)
-│   ├── AudioChunks.kt           소리 크기 곡선 디코딩 · AAC 재인코딩 없이 잘라 내기
+│   ├── AudioChunks.kt           소리 크기 곡선 디코딩 · AAC 는 재인코딩 없이, 그 밖은 AAC 로 바꿔 잘라 내기
 │   ├── QuotaLedger.kt           Groq 무료 한도 안에서 보낼 시각 계산
 │   ├── WhisperFilter.kt         무음 환각·반복 걸러 내기, 원문 문단 묶기
-│   ├── TranscriptCorrector.kt   교정 프롬프트([mm:ss] 유지) · 답 검증
-│   ├── GroqClient.kt / NvidiaClient.kt  API 호출 (multipart / 스트리밍)
-│   ├── TranscriptionEngine.kt   작업 한 걸음씩: 나누기 → 받아 적기 → 교정
+│   ├── GroqClient.kt            Whisper API 호출 (multipart)
+│   ├── TranscriptionEngine.kt   작업 한 걸음씩: 나누기 → 받아 적기 → 문단
 │   ├── TranscriptionQueue.kt / TranscriptionWorker.kt  WorkManager 대기열
 │   └── SecretStore.kt / AiSettings.kt  Keystore 암호화 키 · 설정 · 전송 기록
 ├── schedule/
@@ -289,8 +288,8 @@ app/src/main/java/dev/iruki/classtime/
 | `ChunkPlannerTest` | 긴 무음 건너뛰기, 짧은 쉼은 유지, 숨 쉬는 자리에서 자르기, 조각 길이 한도, 바닥 소음 적응 |
 | `QuotaLedgerTest` | Groq 분당 요청·시간당/하루 소리 한도, 최소 10초 청구 |
 | `WhisperFilterTest` | 무음 끝인사 환각·반복 루프 제거, 실제 인사는 유지, 원문 문단 나누기 |
-| `TranscriptCorrectorTest` | 시각 표기 왕복, 프롬프트, 답 해석·요약 거부·시각 보정, 추론 태그 제거, Groq 응답 해석 |
-| `TranscriptionEngineTest` | 가짜 API 로 전체 흐름 — 나누기→받아 적기→교정, 한도 대기 후 재전송 없이 이어가기, 키 거부, 내려간 모델 대체, 취소 |
+| `TranscriptJsonTest` | 시각 표기, Groq 응답 해석, JSON 왕복, 재시도 헤더 |
+| `TranscriptionEngineTest` | 가짜 API 로 전체 흐름 — 나누기→받아 적기→문단, 한도 대기 후 재전송 없이 이어가기, 키 거부, 권한 없는 파일·코덱 오류는 이유와 함께 실패, 예전 ‘교정 중’ 작업 마무리, 취소 |
 
 ## 8. 다음에 붙이면 좋을 것
 

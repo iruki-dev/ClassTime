@@ -34,10 +34,15 @@ class TranscriptionEngineTest {
         override fun put(name: String, value: String?) { if (value == null) map.remove(name) else map[name] = value }
     }
 
+    /** 파일을 열 때 던질 예외(들여온 파일 흉내). */
+    private var audioError: Exception? = null
+
     /** 25분 강의: 말소리 + 숨. 10분 남짓 조각 세 개로 나뉜다. */
     private val audio = object : AudioSource {
-        override fun envelope(uri: String, isStopped: () -> Boolean) =
-            FloatArray(25 * 60 * 10) { if (it % 80 in 75..79) -60f else -20f }
+        override fun envelope(uri: String, isStopped: () -> Boolean): FloatArray {
+            audioError?.let { throw it }
+            return FloatArray(25 * 60 * 10) { if (it % 80 in 75..79) -60f else -20f }
+        }
         override fun cut(uri: String, range: LongRange, out: File) {
             out.parentFile?.mkdirs(); out.writeBytes(ByteArray(10))
         }
@@ -56,19 +61,6 @@ class TranscriptionEngineTest {
         }
     }
 
-    private var chatAnswer: (String) -> String = { prompt ->
-        // 받은 줄을 그대로 한 문단씩 돌려준다(교정한 셈).
-        prompt.lines().filter { it.startsWith("[") }.joinToString("\n\n") { it.replace("조각", "교정된 조각") }
-    }
-    private val models = mutableListOf<String>()
-    private val chat = object : ChatModel {
-        override fun chat(key: String, model: String, system: String, user: String, maxTokens: Int): String {
-            models += model
-            if (model == "gone/model") throw AiException(AiException.Kind.MODEL_GONE, "410")
-            return chatAnswer(user)
-        }
-    }
-
     private lateinit var engine: TranscriptionEngine
 
     @Before
@@ -77,10 +69,9 @@ class TranscriptionEngineTest {
         db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).allowMainThreadQueries().build()
         settings = AiSettings(context, secrets)
         settings.setGroqKey("gsk_test1234")
-        settings.setNvidiaKey("nvapi-test5678")
         engine = TranscriptionEngine(
             context, db.transcriptDao(), db.recordingDao(), settings,
-            audio = audio, groq = groq, nvidia = chat, clock = { now },
+            audio = audio, groq = groq, clock = { now },
         )
         db.recordingDao().insert(
             Recording(id = 1, subject = "자료구조", professor = "김교수", fileName = "a.m4a", uri = "content://x/1",
@@ -104,8 +95,8 @@ class TranscriptionEngineTest {
     }
 
     @Test
-    fun fullRun_splitsTranscribesCorrects_andDropsHallucinations() = runBlocking {
-        db.transcriptDao().upsert(Transcript(recordingId = 1, queuedAt = now, correct = true))
+    fun fullRun_splitsTranscribes_andDropsHallucinations() = runBlocking {
+        db.transcriptDao().upsert(Transcript(recordingId = 1, queuedAt = now))
         runToEnd()
 
         val t = job()
@@ -124,20 +115,10 @@ class TranscriptionEngineTest {
         assertThat(segments[1].startMs).isEqualTo(plan[1].first + 1_000)
 
         val paragraphs = TranscriptJson.paragraphs(t.paragraphs)
-        assertThat(paragraphs.first().text).contains("교정된 조각 1")
-        assertThat(t.model).isEqualTo(NvidiaClient.PREFERRED.first())
+        assertThat(paragraphs.first().text).contains("조각 1 첫 문장")
+        assertThat(paragraphs.first().startMs).isEqualTo(segments.first().startMs)
         // 한도 기록이 남는다(조각마다).
         assertThat(settings.usage()).hasSize(plan.size)
-    }
-
-    @Test
-    fun withoutCorrection_endsWithRawParagraphs() = runBlocking {
-        db.transcriptDao().upsert(Transcript(recordingId = 1, queuedAt = now, correct = false))
-        runToEnd()
-        val t = job()
-        assertThat(t.stateEnum).isEqualTo(TranscriptState.DONE)
-        assertThat(models).isEmpty()
-        assertThat(TranscriptJson.paragraphs(t.paragraphs).first().text).contains("조각 1 첫 문장")
     }
 
     @Test
@@ -170,24 +151,43 @@ class TranscriptionEngineTest {
     }
 
     @Test
-    fun retiredModel_fallsBackToTheNext() = runBlocking {
-        settings.setModel("gone/model")
-        db.transcriptDao().upsert(Transcript(recordingId = 1, queuedAt = now, correct = true))
+    fun legacyCorrectingJob_finishesWithRawParagraphs() = runBlocking {
+        // 예전 버전(LLM 교정)에서 ‘다듬는 중’으로 남은 작업: 받아 적은 원문으로 끝낸다.
+        db.transcriptDao().upsert(Transcript(recordingId = 1, queuedAt = now))
+        engine.step(job())
+        repeat(TranscriptJson.plan(job().plan).size) { engine.step(job()) }
+        db.transcriptDao().upsert(job().copy(state = TranscriptState.CORRECTING.name, sectionsTotal = 3))
         runToEnd()
-        assertThat(models.first()).isEqualTo("gone/model")
-        assertThat(job().model).isEqualTo(NvidiaClient.PREFERRED.first())
+        assertThat(job().stateEnum).isEqualTo(TranscriptState.DONE)
+        assertThat(TranscriptJson.paragraphs(job().paragraphs)).isNotEmpty()
+    }
+
+    @Test
+    fun unreadableImportedFile_failsWithPermissionReasonAndDetail() = runBlocking {
+        audioError = AudioAccessException(
+            AudioAccessException.Reason.PERMISSION, "permission",
+            SecurityException("Permission Denial: reading MediaProvider"),
+        )
+        db.transcriptDao().upsert(Transcript(recordingId = 1, queuedAt = now))
+        engine.step(job())
+        assertThat(job().stateEnum).isEqualTo(TranscriptState.FAILED)
+        assertThat(job().errorEnum).isEqualTo(TranscriptError.PERMISSION)
+        assertThat(job().errorDetail).contains("SecurityException")
+        // 권한을 주고 다시 시도하면 처음부터 이어진다.
+        audioError = null
+        TranscriptionQueueRetry.reset(db, now)
+        runToEnd()
         assertThat(job().stateEnum).isEqualTo(TranscriptState.DONE)
     }
 
     @Test
-    fun summarizingModel_isRetriedOnce_thenRawTextIsKept() = runBlocking {
-        chatAnswer = { "[00:01] 요약." }
-        db.transcriptDao().upsert(Transcript(recordingId = 1, queuedAt = now, correct = true))
-        runToEnd()
-        val t = job()
-        assertThat(t.stateEnum).isEqualTo(TranscriptState.DONE)
-        assertThat(t.errorEnum).isEqualTo(TranscriptError.CORRECTION)
-        assertThat(TranscriptJson.paragraphs(t.paragraphs).joinToString { it.text }).contains("조각 1 첫 문장")
+    fun unexpectedCodecError_failsInsteadOfCrashingTheQueue() = runBlocking {
+        audioError = IllegalStateException("codec died")
+        db.transcriptDao().upsert(Transcript(recordingId = 1, queuedAt = now))
+        engine.step(job())
+        assertThat(job().stateEnum).isEqualTo(TranscriptState.FAILED)
+        assertThat(job().errorEnum).isEqualTo(TranscriptError.UNKNOWN)
+        assertThat(job().errorDetail).contains("codec died")
     }
 
     @Test
@@ -198,5 +198,13 @@ class TranscriptionEngineTest {
         db.transcriptDao().delete(1)
         engine.step(snapshot)
         assertThat(db.transcriptDao().get(1)).isNull()
+    }
+}
+
+/** [TranscriptionQueue.retry] 와 같은 되살리기(WorkManager 없이). */
+private object TranscriptionQueueRetry {
+    suspend fun reset(db: AppDatabase, now: Long) {
+        val t = db.transcriptDao().get(1)!!
+        db.transcriptDao().upsert(t.copy(state = TranscriptState.QUEUED.name, error = "", attempts = 0, waitUntil = 0, queuedAt = now))
     }
 }

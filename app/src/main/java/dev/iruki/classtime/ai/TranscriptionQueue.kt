@@ -30,40 +30,11 @@ class TranscriptionQueue(
     fun observe(recordingId: Long): Flow<Transcript?> = dao.observe(recordingId)
     fun observeAll(): Flow<List<Transcript>> = dao.observeAll()
 
-    /**
-     * 변환을 맡긴다. 이미 끝난 것도 다시 맡길 수 있다(처음부터).
-     * @param correct null 이면 지금 설정을 따른다.
-     */
-    suspend fun enqueue(recordingId: Long, correct: Boolean? = null) {
+    /** 변환을 맡긴다. 이미 끝난 것도 다시 맡길 수 있다(처음부터). */
+    suspend fun enqueue(recordingId: Long) {
         val existing = dao.get(recordingId)
         if (existing != null && existing.stateEnum.active) return
-        dao.upsert(
-            Transcript(
-                recordingId = recordingId,
-                queuedAt = clock(),
-                correct = correct ?: settings.config.value.canCorrect,
-            )
-        )
-        kick()
-    }
-
-    /** 받아 적은 원문은 두고 교정만 다시. */
-    suspend fun recorrect(recordingId: Long) {
-        val t = dao.get(recordingId) ?: return
-        if (t.stateEnum.active || t.segments.isBlank()) return
-        dao.upsert(
-            t.copy(
-                state = TranscriptState.CORRECTING.name,
-                queuedAt = clock(),
-                correct = true,
-                sectionsDone = 0,
-                sectionsTotal = TranscriptCorrector.sections(TranscriptJson.segments(t.segments)).size,
-                paragraphs = "",
-                error = "",
-                attempts = 0,
-                waitUntil = 0,
-            )
-        )
+        dao.upsert(Transcript(recordingId = recordingId, queuedAt = clock(), correct = false))
         kick()
     }
 
@@ -77,7 +48,7 @@ class TranscriptionQueue(
         val resume = when {
             t.plan.isBlank() -> TranscriptState.QUEUED
             t.chunksDone < TranscriptJson.plan(t.plan).size -> TranscriptState.TRANSCRIBING
-            else -> TranscriptState.TRANSCRIBING // 받아 적기를 마쳤으면 엔진이 교정으로 넘긴다
+            else -> TranscriptState.TRANSCRIBING // 받아 적기를 마쳤으면 엔진이 바로 문단으로 묶어 끝낸다
         }
         dao.upsert(t.copy(state = resume.name, error = "", attempts = 0, waitUntil = 0, queuedAt = clock()))
         kick()

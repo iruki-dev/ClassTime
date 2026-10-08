@@ -42,8 +42,13 @@ data class Transcript(
     val stateEnum: TranscriptState
         get() = TranscriptState.entries.firstOrNull { it.name == state } ?: TranscriptState.FAILED
 
+    /** [error] 칸은 ‘이름’ 또는 ‘이름|자세한 원인’. */
     val errorEnum: TranscriptError?
-        get() = TranscriptError.entries.firstOrNull { it.name == error }
+        get() = error.substringBefore('|').let { name -> TranscriptError.entries.firstOrNull { it.name == name } }
+
+    /** 실패 원인 한 줄(예외 이름과 메시지). 없으면 빈 문자열. */
+    val errorDetail: String
+        get() = error.substringAfter('|', "")
 }
 
 enum class TranscriptState {
@@ -53,7 +58,7 @@ enum class TranscriptState {
     PREPARING,
     /** 조각을 Whisper 로 보내는 중. */
     TRANSCRIBING,
-    /** LLM 으로 교정·문단 정리 중. */
+    /** 예전 버전의 LLM 교정 단계. 이제는 쓰지 않고, 남은 작업은 원문 문단으로 끝낸다. */
     CORRECTING,
     DONE,
     FAILED;
@@ -64,10 +69,12 @@ enum class TranscriptState {
 enum class TranscriptError(val retryable: Boolean) {
     /** Groq 키가 없거나 거부됨. */
     GROQ_KEY(false),
-    /** NVIDIA 키가 거부됨. 원문만 남긴다. */
-    NVIDIA_KEY(false),
     /** 녹음 파일이 없어졌거나 읽을 수 없음. */
     FILE(false),
+    /** 다른 앱이 만든 파일이라 오디오 읽기 권한이 필요함. */
+    PERMISSION(false),
+    /** 열었지만 소리를 읽을 수 없는 형식. */
+    FORMAT(false),
     /** 소리가 거의 없음. */
     NO_SPEECH(false),
     /** 네트워크 없음/끊김. 연결되면 이어서 한다. */
@@ -76,7 +83,10 @@ enum class TranscriptError(val retryable: Boolean) {
     QUOTA(true),
     /** 서버 오류. 잠시 뒤 다시. */
     SERVER(true),
-    /** 교정만 실패. 원문 문단으로 끝냈다. */
-    CORRECTION(false),
-    UNKNOWN(false),
+    UNKNOWN(false);
+
+    companion object {
+        fun encode(error: TranscriptError, detail: String = ""): String =
+            if (detail.isBlank()) error.name else error.name + "|" + detail.replace('\n', ' ')
+    }
 }

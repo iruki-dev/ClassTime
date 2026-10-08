@@ -182,7 +182,8 @@ suspend fun finalizeRecordingRow(
     row: Recording,
 ): Recording {
     val uri = Uri.parse(row.uri)
-    val size = runCatching { storage.finalize(uri, null) }.getOrDefault(row.sizeBytes)
+    // 크기를 못 읽으면(권한·일시적 오류) 원래 값을 지킨다. 0 으로 덮으면 되돌릴 수 없다.
+    val size = runCatching { storage.finalize(uri, null) }.getOrNull()?.takeIf { it > 0 } ?: row.sizeBytes
     val duration = row.durationMs.takeIf { it > 0 }
         ?: runCatching { storage.probeDurationMs(uri) }.getOrDefault(0L)
     val fixed = row.copy(ongoing = false, sizeBytes = size, durationMs = duration)

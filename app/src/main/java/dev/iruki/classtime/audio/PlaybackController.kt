@@ -14,7 +14,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -40,8 +43,20 @@ data class PlaybackState(
 class PlaybackController @Inject constructor(
     @ApplicationContext private val app: Context,
     private val repo: ClassTimeRepository,
+    private val storage: RecordingStorage,
     @ApplicationScope private val scope: CoroutineScope,
 ) {
+    /** 재생하지 못했을 때 화면에 알릴 이유. 조용히 실패하면 사용자는 왜 안 되는지 모른다. */
+    enum class Problem { NO_ACCESS, UNREADABLE }
+
+    private val _problems = MutableSharedFlow<Problem>(extraBufferCapacity = 1)
+    val problems: SharedFlow<Problem> = _problems.asSharedFlow()
+
+    private suspend fun report(recording: Recording) {
+        val access = withContext(Dispatchers.IO) { storage.access(Uri.parse(recording.uri)) }
+        _problems.tryEmit(if (access == RecordingStorage.Access.PERMISSION) Problem.NO_ACCESS else Problem.UNREADABLE)
+    }
+
     private var player: MediaPlayer? = null
     private var ticker: Job? = null
 
@@ -71,7 +86,7 @@ class PlaybackController @Inject constructor(
                 if (tryPlay(ready)) return@withContext
                 // 그래도 실패하면 한 번 더 강제 확정 후 재시도
                 val fixed = withContext(Dispatchers.IO) { repo.forceFinalize(ready) }
-                tryPlay(fixed)
+                if (!tryPlay(fixed)) report(fixed)
             }
         }
     }
@@ -84,7 +99,7 @@ class PlaybackController @Inject constructor(
         if (_state.value.recordingId == recording.id) return
         scope.launch {
             val ready = if (recording.ongoing || recording.sizeBytes == 0L) repo.forceFinalize(recording) else recording
-            withContext(Dispatchers.Main) { tryPlay(ready, start = false) }
+            withContext(Dispatchers.Main) { if (!tryPlay(ready, start = false)) report(ready) }
         }
     }
 
