@@ -11,19 +11,18 @@ import java.io.File
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import kotlin.math.log10
 
 /**
  * 녹음 파일을 다루는 기기 쪽 작업 두 가지.
  *
- * - [envelope]: 디코딩해 [ChunkPlanner.WINDOW_MS] 마다 소리 크기(dBFS)를 잰다.
- * - [cut]: 정한 구간을 **다시 인코딩하지 않고** AAC 프레임 그대로 새 m4a 로 옮긴다.
+ * - [profile]: 디코딩해 [AudioProfile.WINDOW_MS] 마다 소리 크기와 목소리 주기성을 잰다.
+ * - [cut]: 정한 구간들을 **다시 인코딩하지 않고** AAC 프레임 그대로 이어 붙여 새 m4a 로 옮긴다.
  *   음질 손실이 없고 빠르며, 96kbps 10분 조각이 약 7MB 라 무료 한도(25MB) 안에 넉넉히 든다.
  *   AAC 가 아닌 파일(들여온 mp3·wav 등)만 AAC 로 바꿔 쓴다.
  */
 class AudioChunks(private val context: Context) : AudioSource {
 
-    override fun envelope(uri: String, isStopped: () -> Boolean): FloatArray {
+    override fun profile(uri: String, isStopped: () -> Boolean): AudioProfile {
         val extractor = open(uri)
         val track = audioTrack(extractor)
         extractor.selectTrack(track)
@@ -35,11 +34,7 @@ class AudioChunks(private val context: Context) : AudioSource {
         var sampleRate = format.getInteger(MediaFormat.KEY_SAMPLE_RATE)
         var channels = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
         var floatPcm = false
-        var perWindow = (sampleRate * ChunkPlanner.WINDOW_MS / 1000).toInt() * channels
-
-        val levels = ArrayList<Float>(1 shl 15)
-        var sum = 0.0
-        var count = 0
+        var builder: ProfileBuilder? = null
         val info = MediaCodec.BufferInfo()
         var inputDone = false
         try {
@@ -67,20 +62,17 @@ class AudioChunks(private val context: Context) : AudioSource {
                         channels = f.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
                         floatPcm = f.containsKey(MediaFormat.KEY_PCM_ENCODING) &&
                             f.getInteger(MediaFormat.KEY_PCM_ENCODING) == AudioFormat.ENCODING_PCM_FLOAT
-                        perWindow = (sampleRate * ChunkPlanner.WINDOW_MS / 1000).toInt() * channels
                     }
                     o >= 0 -> {
+                        val b = builder ?: ProfileBuilder(sampleRate).also { builder = it }
                         val out = codec.getOutputBuffer(o)!!.order(ByteOrder.nativeOrder())
                         out.position(info.offset)
                         out.limit(info.offset + info.size)
-                        while (out.hasRemaining()) {
-                            val v = if (floatPcm) out.float.toDouble() else out.short / 32768.0
-                            sum += v * v
-                            if (++count >= perWindow) {
-                                levels += db(sum / count)
-                                sum = 0.0
-                                count = 0
-                            }
+                        val frameBytes = (if (floatPcm) 4 else 2) * channels
+                        while (out.remaining() >= frameBytes) {
+                            var sum = 0f
+                            repeat(channels) { sum += if (floatPcm) out.float else out.short / 32768f }
+                            b.add(sum / channels)
                         }
                         codec.releaseOutputBuffer(o, false)
                         if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) break
@@ -92,15 +84,11 @@ class AudioChunks(private val context: Context) : AudioSource {
             codec.release()
             extractor.release()
         }
-        if (count > 0) levels += db(sum / count)
-        return levels.toFloatArray()
+        return (builder ?: ProfileBuilder(sampleRate)).build()
     }
 
-    private fun db(meanSquare: Double): Float =
-        if (meanSquare <= 1e-10) -100f else (10 * log10(meanSquare)).toFloat().coerceAtLeast(-100f)
-
-    /** [range](ms) 를 [out] 으로 옮긴다. 시간은 0부터 다시 센다. */
-    override fun cut(uri: String, range: LongRange, out: File) {
+    /** [pieces](ms)를 차례로 이어 [out] 으로 옮긴다. 시간은 0부터 이어서 센다. */
+    override fun cut(uri: String, pieces: List<LongRange>, out: File) {
         out.parentFile?.mkdirs()
         val extractor = open(uri)
         val track = audioTrack(extractor)
@@ -108,31 +96,42 @@ class AudioChunks(private val context: Context) : AudioSource {
         val format = extractor.getTrackFormat(track)
         if (format.getString(MediaFormat.KEY_MIME) != MediaFormat.MIMETYPE_AUDIO_AAC) {
             extractor.release()
-            transcode(uri, range, out)
+            transcode(uri, pieces, out)
             return
         }
         val muxer = MediaMuxer(out.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
         try {
             val dst = muxer.addTrack(format)
             muxer.start()
-            val startUs = range.first * 1000
-            val endUs = range.last * 1000
-            extractor.seekTo(startUs, MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
             val buf = ByteBuffer.allocate(
                 if (format.containsKey(MediaFormat.KEY_MAX_INPUT_SIZE)) format.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE) else 64 * 1024
             )
+            // AAC 프레임 하나 = 1024 샘플. 구간을 이을 때 앞 구간 마지막 프레임 길이만큼 띄운다.
+            val frameUs = 1024L * 1_000_000L / format.getInteger(MediaFormat.KEY_SAMPLE_RATE)
             val info = MediaCodec.BufferInfo()
-            var base = -1L
-            while (true) {
-                val n = extractor.readSampleData(buf, 0)
-                if (n < 0) break
-                val t = extractor.sampleTime
-                if (t > endUs) break
-                if (base < 0) base = t
-                info.set(0, n, t - base, MediaCodec.BUFFER_FLAG_KEY_FRAME)
-                muxer.writeSampleData(dst, buf, info)
-                extractor.advance()
+            var outUs = 0L
+            var written = false
+            for (piece in pieces) {
+                val startUs = piece.first * 1000
+                val endUs = piece.last * 1000
+                extractor.seekTo(startUs, MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
+                var base = -1L
+                var lastUs = -1L
+                while (true) {
+                    val n = extractor.readSampleData(buf, 0)
+                    if (n < 0) break
+                    val t = extractor.sampleTime
+                    if (t > endUs) break
+                    if (base < 0) base = t
+                    info.set(0, n, outUs + (t - base), MediaCodec.BUFFER_FLAG_KEY_FRAME)
+                    muxer.writeSampleData(dst, buf, info)
+                    written = true
+                    lastUs = t
+                    extractor.advance()
+                }
+                if (base >= 0) outUs += lastUs - base + frameUs
             }
+            if (!written) throw AudioAccessException(AudioAccessException.Reason.FORMAT, "empty range")
             muxer.stop()
         } finally {
             runCatching { muxer.release() }
@@ -177,17 +176,19 @@ class AudioChunks(private val context: Context) : AudioSource {
         } ?: throw AudioAccessException(AudioAccessException.Reason.FORMAT, "no audio track")
 
     /**
-     * AAC 가 아닌 녹음(폴더 검사로 들여온 mp3·wav·ogg 등)의 [range] 를 AAC m4a 로 바꿔 쓴다.
+     * AAC 가 아닌 녹음(폴더 검사로 들여온 mp3·wav·ogg 등)의 [pieces] 를 AAC m4a 로 바꿔 쓴다.
      * 프레임을 그대로 옮길 수 없는 형식이라 디코딩 → 모노 → (필요하면 리샘플) → AAC 64kbps.
+     * 한 구간을 다 넣으면 다음 구간 처음으로 건너뛰고, 구간 밖의 소리는 버린다.
      */
-    private fun transcode(uri: String, range: LongRange, out: File) {
+    private fun transcode(uri: String, pieces: List<LongRange>, out: File) {
         val extractor = open(uri)
         val track = audioTrack(extractor)
         extractor.selectTrack(track)
         val inFormat = extractor.getTrackFormat(track)
-        val startUs = range.first * 1000
-        val endUs = range.last * 1000
-        extractor.seekTo(startUs, MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
+        var feeding = 0
+        extractor.seekTo(pieces[0].first * 1000, MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
+        var keepIndex = 0
+        var lastKeptUs = -1L
 
         var inRate = inFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE)
         var inChannels = inFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
@@ -226,9 +227,15 @@ class AudioChunks(private val context: Context) : AudioSource {
                 if (!decoderInDone) {
                     val i = decoder.dequeueInputBuffer(5_000)
                     if (i >= 0) {
-                        val n = extractor.readSampleData(decoder.getInputBuffer(i)!!, 0)
-                        val t = extractor.sampleTime
-                        if (n < 0 || t > endUs) {
+                        var n = extractor.readSampleData(decoder.getInputBuffer(i)!!, 0)
+                        var t = extractor.sampleTime
+                        while (n >= 0 && t > pieces[feeding].last * 1000 && feeding < pieces.lastIndex) {
+                            feeding++
+                            extractor.seekTo(pieces[feeding].first * 1000, MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
+                            n = extractor.readSampleData(decoder.getInputBuffer(i)!!, 0)
+                            t = extractor.sampleTime
+                        }
+                        if (n < 0 || t > pieces.last().last * 1000) {
                             decoder.queueInputBuffer(i, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
                             decoderInDone = true
                         } else {
@@ -257,7 +264,10 @@ class AudioChunks(private val context: Context) : AudioSource {
                             var sum = 0f
                             repeat(inChannels) { sum += if (floatPcm) buf.float else buf.short / 32768f }
                             val at = info.presentationTimeUs + f * 1_000_000L / inRate
-                            if (at in startUs..endUs) {
+                            while (keepIndex < pieces.lastIndex && at > pieces[keepIndex].last * 1000) keepIndex++
+                            val piece = pieces[keepIndex]
+                            if (at > lastKeptUs && at >= piece.first * 1000 && at <= piece.last * 1000) {
+                                lastKeptUs = at
                                 mono[kept++] = (sum / inChannels * 32767f).toInt().coerceIn(-32768, 32767).toShort()
                             }
                         }

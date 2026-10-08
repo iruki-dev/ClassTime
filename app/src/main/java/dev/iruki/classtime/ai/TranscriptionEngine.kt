@@ -18,7 +18,7 @@ import kotlinx.coroutines.withContext
  * 대기열의 작업 하나를 **한 걸음** 나아가게 한다. 걸음마다 결과를 DB 에 저장하므로
  * 어디서 멈춰도(앱 종료, 네트워크 끊김, 한도) 그다음 걸음부터 이어진다.
  *
- * 걸음: 조각 나누기 → 조각마다 받아 적기 → 문단으로 묶어 끝.
+ * 걸음: 조각 나누기 → 조각마다 받아 적기(놓친 곳은 한 번 더) → 문단으로 묶어 끝.
  */
 class TranscriptionEngine(
     private val context: Context,
@@ -30,6 +30,7 @@ class TranscriptionEngine(
     private val ledger: QuotaLedger = QuotaLedger(),
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
+    private val detector = SpeechDetector()
 
     sealed interface Outcome {
         /** 한 걸음 나아갔다(또는 끝났다). 다음 걸음으로. */
@@ -47,7 +48,7 @@ class TranscriptionEngine(
         try {
             when {
                 job.plan.isBlank() -> prepare(job, recording, isStopped)
-                job.chunksDone < TranscriptJson.plan(job.plan).size -> transcribeNext(job, recording)
+                job.chunksDone < TranscriptJson.plan(job.plan).size -> transcribeNext(job, recording, isStopped)
                 else -> finishTranscribing(job)
             }
             Outcome.Progressed
@@ -79,8 +80,10 @@ class TranscriptionEngine(
 
     private suspend fun prepare(job: Transcript, recording: Recording, isStopped: () -> Boolean) {
         save(job.copy(state = TranscriptState.PREPARING.name, error = ""))
-        val envelope = audio.envelope(recording.uri, isStopped)
-        val plan = plannerFor(recording).plan(envelope)
+        val profile = audio.profile(recording.uri, isStopped)
+        val active = detector.active(profile)
+        saveEvidence(job.recordingId, SpeechEvidence(active))
+        val plan = plannerFor(recording).plan(detector.spans(active), profile.level)
         if (plan.isEmpty()) {
             fail(job, TranscriptError.NO_SPEECH)
             return
@@ -92,7 +95,7 @@ class TranscriptionEngine(
                 chunksDone = 0,
                 segments = "",
                 error = "",
-                speechSeconds = (plan.sumOf { it.last - it.first } / 1000).toInt(),
+                speechSeconds = (plan.sumOf { it.durationMs } / 1000).toInt(),
             )
         )
     }
@@ -114,15 +117,15 @@ class TranscriptionEngine(
 
     // --- 2. 받아 적기 ---
 
-    private suspend fun transcribeNext(job: Transcript, recording: Recording) {
+    private suspend fun transcribeNext(job: Transcript, recording: Recording, isStopped: () -> Boolean) {
         val key = settings.groqKey()
         if (key == null) {
             fail(job, TranscriptError.GROQ_KEY)
             return
         }
         val plan = TranscriptJson.plan(job.plan)
-        val range = plan[job.chunksDone]
-        val seconds = ((range.last - range.first + 999) / 1000).toInt()
+        val chunk = plan[job.chunksDone]
+        val seconds = ((chunk.durationMs + 999) / 1000).toInt()
 
         val now = clock()
         val wait = ledger.waitMs(settings.usage(), now, seconds)
@@ -131,28 +134,63 @@ class TranscriptionEngine(
             return
         }
 
+        val evidence = evidence(job.recordingId, recording, isStopped).slice(chunk)
         val file = File(chunkDir(job.recordingId), "${job.chunksDone}.m4a")
-        if (!file.exists() || file.length() == 0L) audio.cut(recording.uri, range, file)
+        if (!file.exists() || file.length() == 0L) audio.cut(recording.uri, chunk.pieces, file)
         if (file.length() > GroqClient.MAX_FILE_BYTES) throw AiException(AiException.Kind.TOO_LARGE, "chunk")
 
         val previous = TranscriptJson.segments(job.segments)
         save(job.copy(state = TranscriptState.TRANSCRIBING.name, waitUntil = 0, error = ""))
-        val raw = groq.transcribe(key, file, whisperPrompt(recording, previous))
+        val before = if (chunk.retry) previous.filter { it.endMs <= chunk.pieces.first().first } else previous
+        val raw = groq.transcribe(key, file, whisperPrompt(recording, before))
         settings.recordUse(QuotaLedger.Use(clock(), maxOf(seconds, QuotaLedger.MIN_BILLED_SECONDS)), ledger)
 
-        val cleaned = WhisperFilter.clean(raw).map {
-            Segment(it.startMs + range.first, it.endMs + range.first, it.text)
+        val cleaned = WhisperFilter.clean(raw, evidence).map {
+            Segment(chunk.toSource(it.startMs), chunk.toSource(it.endMs, end = true), it.text)
+        }
+        // Whisper 가 말소리를 통째로 놓친 30초 창은 그 부분만 바로 뒤에 한 번 더 받아 적는다.
+        val retries = if (chunk.retry) emptyList() else {
+            WhisperFilter.missedWindows(raw, evidence, chunk.durationMs)
+                .map { Chunk(chunk.sourcePieces(it), retry = true) }
         }
         file.delete()
         val latest = transcripts.get(job.recordingId) ?: return // 그사이 취소됨
+        val newPlan = plan.take(job.chunksDone + 1) + retries + plan.drop(job.chunksDone + 1)
         save(
             latest.copy(
-                segments = TranscriptJson.segments(previous + cleaned),
+                plan = TranscriptJson.plan(newPlan),
+                segments = TranscriptJson.segments(if (chunk.retry) replaceMissed(previous, cleaned, chunk) else previous + cleaned),
                 chunksDone = job.chunksDone + 1,
+                speechSeconds = latest.speechSeconds + (retries.sumOf { it.durationMs } / 1000).toInt(),
                 attempts = 0,
                 error = "",
             )
         )
+    }
+
+    /**
+     * 다시 받아 적은 결과가 처음보다 많이 알아들었으면(글자 수) 그 구간의 문장을 바꾼다.
+     * 아니면 처음 것을 그대로 둔다.
+     */
+    internal fun replaceMissed(previous: List<Segment>, fresh: List<Segment>, chunk: Chunk): List<Segment> {
+        fun inside(s: Segment) = chunk.pieces.any { (s.startMs + s.endMs) / 2 in it }
+        val old = previous.filter(::inside)
+        if (fresh.sumOf { it.text.length } <= old.sumOf { it.text.length }) return previous
+        return (previous.filterNot(::inside) + fresh).sortedBy { it.startMs }
+    }
+
+    /** 말소리 근거. 나누기 때 저장해 두고, 캐시가 지워졌으면 다시 잰다. */
+    private fun evidence(recordingId: Long, recording: Recording, isStopped: () -> Boolean): SpeechEvidence {
+        val f = File(chunkDir(recordingId), EVIDENCE)
+        if (f.exists() && f.length() > 0) return SpeechEvidence.fromBytes(f.readBytes())
+        val e = SpeechEvidence(detector.active(audio.profile(recording.uri, isStopped)))
+        saveEvidence(recordingId, e)
+        return e
+    }
+
+    private fun saveEvidence(recordingId: Long, e: SpeechEvidence) {
+        val dir = chunkDir(recordingId).apply { mkdirs() }
+        File(dir, EVIDENCE).writeBytes(e.toBytes())
     }
 
     /**
@@ -165,7 +203,9 @@ class TranscriptionEngine(
             if (recording.professor.isNotBlank()) append(", ").append(recording.professor)
             append(". ")
         }
-        val tail = previous.takeLast(6).joinToString(" ") { it.text }.takeLast(150 - head.length.coerceAtMost(60))
+        // 길고 성긴 문장은 넘기지 않는다: 엉뚱한 문장이 프롬프트로 넘어가면 다음 조각이 통째로 무너진다.
+        val tail = previous.filterNot { WhisperFilter.isSparse(it.startMs, it.endMs, it.text) }
+            .takeLast(6).joinToString(" ") { it.text }.takeLast(150 - head.length.coerceAtMost(60))
         return (head + tail).trim()
     }
 
@@ -249,6 +289,7 @@ class TranscriptionEngine(
     companion object {
         private const val TAG = "Transcription"
         private const val MAX_ATTEMPTS = 4
+        private const val EVIDENCE = "speech.bin"
         /** 무료 한도 25MB 에 여유를 둔 조각 크기. */
         private const val MAX_CHUNK_BYTES = 20.0 * 1024 * 1024
     }

@@ -9,8 +9,10 @@ import java.io.File
 
 /** 녹음 파일 읽기. 실제: [AudioChunks]. */
 interface AudioSource {
-    fun envelope(uri: String, isStopped: () -> Boolean): FloatArray
-    fun cut(uri: String, range: LongRange, out: File)
+    /** 녹음 전체를 디코딩해 소리 크기와 목소리 주기성을 잰다. */
+    fun profile(uri: String, isStopped: () -> Boolean): AudioProfile
+    /** [pieces](ms)를 차례로 이어 붙여 [out](m4a)으로 쓴다. */
+    fun cut(uri: String, pieces: List<LongRange>, out: File)
 }
 
 /** 받아 적기. 실제: [GroqClient]. */

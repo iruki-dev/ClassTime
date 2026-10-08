@@ -33,11 +33,21 @@ class TranscriptJsonTest {
 
     @Test
     fun json_roundTrips() {
-        val plan = listOf(0L..600_000L, 600_000L..1_200_000L)
+        val plan = listOf(
+            Chunk(listOf(0L..300_000L, 320_000L..600_000L)),
+            Chunk(listOf(400_000L..430_000L), retry = true),
+        )
         assertThat(TranscriptJson.plan(TranscriptJson.plan(plan))).isEqualTo(plan)
         assertThat(TranscriptJson.segments(TranscriptJson.segments(segments))).isEqualTo(segments)
         val p = listOf(Paragraph(1, "a \"b\"\n"))
         assertThat(TranscriptJson.paragraphs(TranscriptJson.paragraphs(p))).isEqualTo(p)
+    }
+
+    @Test
+    fun legacyPlan_isReadAsSinglePieceChunks() {
+        // 이전 버전에서 진행 중이던 작업.
+        assertThat(TranscriptJson.plan("[[0,600000],[600000,900000]]"))
+            .containsExactly(Chunk(listOf(0L..600_000L)), Chunk(listOf(600_000L..900_000L))).inOrder()
     }
 
     @Test
