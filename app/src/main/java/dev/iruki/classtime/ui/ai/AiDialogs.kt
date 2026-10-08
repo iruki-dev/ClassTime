@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
@@ -15,11 +14,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
-import androidx.compose.material.icons.rounded.AutoFixHigh
 import androidx.compose.material.icons.rounded.CloudUpload
 import androidx.compose.material.icons.rounded.ContentPaste
 import androidx.compose.material.icons.rounded.Error
@@ -36,7 +33,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -53,7 +49,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
@@ -67,22 +62,21 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.iruki.classtime.R
 
 /**
- * 키 넣기 시트. ‘확인하고 저장’을 누르면 키를 실제로 한 번 써 보고, 되는 키만 저장한다.
- * Groq 키를 처음 넣으면 저장 전에 외부 전송 안내를 띄운다.
+ * Groq 키 넣기 시트. ‘확인하고 저장’을 누르면 키를 실제로 한 번 써 보고, 되는 키만 저장한다.
+ * 처음 넣으면 저장 전에 외부 전송 안내를 띄운다.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun KeySheet(service: KeyService, savedHint: String?, vm: AiLabsViewModel, onDismiss: () -> Unit) {
+internal fun KeySheet(savedHint: String?, vm: AiLabsViewModel, onDismiss: () -> Unit) {
     val c = MaterialTheme.colorScheme
     val check by vm.keyCheck.collectAsStateWithLifecycle()
-    var key by rememberSaveable(service) { mutableStateOf("") }
+    var key by rememberSaveable { mutableStateOf("") }
     var visible by remember { mutableStateOf(false) }
     val clipboard = LocalClipboardManager.current
     val uri = LocalUriHandler.current
-    val groq = service == KeyService.GROQ
-    val name = if (groq) "Groq" else "NVIDIA"
-    val host = if (groq) "console.groq.com" else "build.nvidia.com"
-    val url = if (groq) "https://console.groq.com/keys" else "https://build.nvidia.com/settings/api-keys"
+    val name = "Groq"
+    val host = "console.groq.com"
+    val url = "https://console.groq.com/keys"
 
     LaunchedEffect(check) { if (check == KeyCheck.Saved) onDismiss() }
 
@@ -100,13 +94,13 @@ internal fun KeySheet(service: KeyService, savedHint: String?, vm: AiLabsViewMod
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 Surface(color = c.secondaryContainer, contentColor = c.onSecondaryContainer, shape = MaterialTheme.shapes.large, modifier = Modifier.size(48.dp)) {
                     Box(contentAlignment = Alignment.Center) {
-                        Icon(if (groq) Icons.Rounded.GraphicEq else Icons.Rounded.AutoFixHigh, contentDescription = null)
+                        Icon(Icons.Rounded.GraphicEq, contentDescription = null)
                     }
                 }
                 Column {
                     Text(stringResource(R.string.ai_key_title, name), style = MaterialTheme.typography.titleLarge)
                     Text(
-                        stringResource(if (groq) R.string.ai_key_groq_detail else R.string.ai_key_nvidia_detail),
+                        stringResource(R.string.ai_key_groq_detail),
                         style = MaterialTheme.typography.bodyMedium,
                         color = c.onSurfaceVariant,
                     )
@@ -163,7 +157,7 @@ internal fun KeySheet(service: KeyService, savedHint: String?, vm: AiLabsViewMod
 
             val checking = check == KeyCheck.Checking
             Button(
-                onClick = { vm.checkKey(service, key) },
+                onClick = { vm.checkKey(key) },
                 enabled = key.isNotBlank() && !checking,
                 modifier = Modifier.fillMaxWidth().height(56.dp).padding(top = 0.dp),
             ) {
@@ -177,7 +171,7 @@ internal fun KeySheet(service: KeyService, savedHint: String?, vm: AiLabsViewMod
             }
             Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.Center) {
                 if (savedHint != null) {
-                    TextButton(onClick = { vm.deleteKey(service) }) {
+                    TextButton(onClick = { vm.deleteKey() }) {
                         Text(stringResource(R.string.ai_key_delete), color = c.error)
                     }
                 }
@@ -187,7 +181,7 @@ internal fun KeySheet(service: KeyService, savedHint: String?, vm: AiLabsViewMod
     }
 
     (check as? KeyCheck.NeedsConsent)?.let {
-        ConsentDialog(onAccept = { vm.acceptConsent(service) }, onDismiss = vm::resetKeyCheck)
+        ConsentDialog(onAccept = vm::acceptConsent, onDismiss = vm::resetKeyCheck)
     }
 }
 
@@ -202,7 +196,6 @@ private fun ConsentDialog(onAccept: () -> Unit, onDismiss: () -> Unit) {
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 ConsentLine(Icons.Rounded.GraphicEq, "Groq", stringResource(R.string.ai_consent_groq))
-                ConsentLine(Icons.Rounded.AutoFixHigh, "NVIDIA", stringResource(R.string.ai_consent_nvidia))
                 ConsentLine(Icons.Rounded.Policy, stringResource(R.string.ai_consent_terms_k), stringResource(R.string.ai_consent_terms), joined = true)
             }
         },
@@ -229,51 +222,14 @@ private fun ConsentLine(icon: androidx.compose.ui.graphics.vector.ImageVector, k
     }
 }
 
-/** 교정 모델 고르기. 지금 제공되지 않는 모델은 흐리게, 고를 수 없게. */
+/** 끝난 텍스트를 처음부터 다시 변환하기 전에. 한도를 다시 쓰고 지금 텍스트가 바뀌므로 한 번 묻는다. */
 @Composable
-internal fun ModelDialog(models: List<ModelChoice>, selected: String, onDismiss: () -> Unit, onPick: (String) -> Unit) {
-    var choice by remember(selected) { mutableStateOf(selected) }
-    val c = MaterialTheme.colorScheme
+fun ReconvertDialog(onDismiss: () -> Unit, onConfirm: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.ai_model)) },
-        text = {
-            Column(Modifier.selectableGroup()) {
-                models.forEachIndexed { i, m ->
-                    val on = m.id == choice
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 64.dp)
-                            .selectable(selected = on, enabled = m.available, role = Role.RadioButton) { choice = m.id },
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        RadioButton(selected = on, onClick = null, enabled = m.available)
-                        Spacer(Modifier.width(16.dp))
-                        Column(Modifier.weight(1f)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(m.name, style = MaterialTheme.typography.bodyLarge, color = if (m.available) c.onSurface else c.onSurface.copy(alpha = 0.38f))
-                                if (i == 0) {
-                                    Text(
-                                        stringResource(R.string.ai_model_default),
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = c.primary,
-                                        modifier = Modifier.padding(start = 8.dp),
-                                    )
-                                }
-                            }
-                            Text(
-                                if (m.available) m.id else stringResource(R.string.ai_model_gone),
-                                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                                color = c.onSurfaceVariant.copy(alpha = if (m.available) 1f else 0.38f),
-                                maxLines = 1,
-                            )
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = { TextButton(onClick = { onPick(choice) }) { Text(stringResource(R.string.action_confirm)) } },
+        title = { Text(stringResource(R.string.ai_reconvert_title)) },
+        text = { Text(stringResource(R.string.ai_reconvert_body)) },
+        confirmButton = { TextButton(onClick = onConfirm) { Text(stringResource(R.string.ai_reconvert_confirm)) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) } },
     )
 }

@@ -13,8 +13,9 @@ import dev.iruki.classtime.R
 import dev.iruki.classtime.ai.AiConfig
 import dev.iruki.classtime.ai.AiSettings
 import dev.iruki.classtime.ai.Paragraph
-import dev.iruki.classtime.ai.TranscriptCorrector
+import dev.iruki.classtime.ai.TranscriptText
 import dev.iruki.classtime.ai.TranscriptionQueue
+import dev.iruki.classtime.ui.share.RecordingExport
 import dev.iruki.classtime.audio.PlaybackController
 import dev.iruki.classtime.audio.PlaybackState
 import dev.iruki.classtime.audio.RecordingStorage
@@ -25,6 +26,7 @@ import dev.iruki.classtime.util.SystemScreens
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -51,10 +53,14 @@ class PlayerViewModel @Inject constructor(
     private val storage: RecordingStorage,
     private val repo: ClassTimeRepository,
     private val queue: TranscriptionQueue,
+    private val exporter: RecordingExport,
     aiSettings: AiSettings,
 ) : ViewModel() {
 
     val state: StateFlow<PlaybackState> = player.state
+
+    /** 재생하지 못한 이유(권한·파일). 화면이 스낵바로 알린다. */
+    val problems: SharedFlow<PlaybackController.Problem> = player.problems
 
     val styles: StateFlow<Map<String, SubjectStyle>> = repo.courses
         .map { list -> list.associate { it.subject to SubjectStyle(it.icon, it.colorArgb) } }
@@ -105,31 +111,18 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
-    fun share(recording: Recording) {
-        val intent = Intent(Intent.ACTION_SEND).apply {
-            type = "audio/mp4"
-            putExtra(Intent.EXTRA_STREAM, Uri.parse(recording.uri))
-            putExtra(Intent.EXTRA_SUBJECT, recording.fileName)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-        app.startActivity(
-            Intent.createChooser(intent, app.getString(R.string.recordings_share_chooser))
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        )
-    }
+    /** 보내기. 텍스트가 있으면 화면이 무엇을 보낼지 먼저 묻는다. */
+    fun export(recording: Recording, audio: Boolean = true, text: Boolean = false) =
+        viewModelScope.launch { exporter.send(listOf(recording), audio, text) }
 
     // --- 텍스트 ---
 
     fun convert(recordingId: Long) = viewModelScope.launch { queue.enqueue(recordingId) }
     fun cancelText(recordingId: Long) = viewModelScope.launch { queue.remove(recordingId) }
     fun retryText(recordingId: Long) = viewModelScope.launch { queue.retry(recordingId) }
-    fun recorrect(recordingId: Long) = viewModelScope.launch { queue.recorrect(recordingId) }
 
-    /** 처음부터 다시: 결과를 지우고 새로 맡긴다. */
-    fun reconvert(recordingId: Long) = viewModelScope.launch {
-        queue.remove(recordingId)
-        queue.enqueue(recordingId)
-    }
+    /** 처음부터 다시. 텍스트 파일은 새 결과가 나오면 덮어쓴다. */
+    fun reconvert(recordingId: Long) = viewModelScope.launch { queue.enqueue(recordingId) }
 
     fun deleteText(recordingId: Long) = viewModelScope.launch { queue.remove(recordingId) }
 
@@ -149,9 +142,7 @@ class PlayerViewModel @Inject constructor(
         )
     }
 
-    /** 내보내는 글: 제목 한 줄 + 문단마다 [시각]. */
-    private fun plainText(recording: Recording, paragraphs: List<Paragraph>): String = buildString {
-        append(recording.fileName.removeSuffix(".m4a")).append("\n\n")
-        paragraphs.forEach { append('[').append(TranscriptCorrector.stamp(it.startMs)).append("] ").append(it.text).append("\n\n") }
-    }.trimEnd()
+    /** 내보내는 글: 텍스트 파일과 같은 모양. */
+    private fun plainText(recording: Recording, paragraphs: List<Paragraph>): String =
+        TranscriptText.format(recording, paragraphs).trimEnd()
 }

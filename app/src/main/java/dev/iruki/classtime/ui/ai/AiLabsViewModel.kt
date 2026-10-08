@@ -7,7 +7,6 @@ import dev.iruki.classtime.ai.AiConfig
 import dev.iruki.classtime.ai.AiException
 import dev.iruki.classtime.ai.AiSettings
 import dev.iruki.classtime.ai.GroqClient
-import dev.iruki.classtime.ai.NvidiaClient
 import dev.iruki.classtime.ai.QuotaLedger
 import dev.iruki.classtime.ai.TranscriptionQueue
 import dev.iruki.classtime.data.ClassTimeRepository
@@ -26,9 +25,6 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** 어느 서비스의 키인지. */
-enum class KeyService { GROQ, NVIDIA }
-
 /** 키 시트의 상태. */
 sealed interface KeyCheck {
     data object Idle : KeyCheck
@@ -46,9 +42,6 @@ data class QueueItem(val transcript: Transcript, val recording: Recording)
 /** 한도 막대 두 개(분). */
 data class QuotaUse(val hourUsed: Int, val hourMax: Int, val dayUsed: Int, val dayMax: Int)
 
-/** 교정 모델 선택지. [available] 은 NVIDIA 목록을 받아 왔을 때만 의미가 있다. */
-data class ModelChoice(val id: String, val name: String, val available: Boolean)
-
 @HiltViewModel
 class AiLabsViewModel @Inject constructor(
     private val settings: AiSettings,
@@ -57,7 +50,6 @@ class AiLabsViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val groq = GroqClient()
-    private val nvidia = NvidiaClient()
     private val ledger = QuotaLedger()
 
     val config: StateFlow<AiConfig> = settings.config
@@ -90,8 +82,6 @@ class AiLabsViewModel @Inject constructor(
     }
 
     fun setAutoTranscribe(on: Boolean) = settings.setAutoTranscribe(on)
-    fun setCorrect(on: Boolean) = settings.setCorrect(on)
-    fun setModel(id: String) = settings.setModel(id)
 
     fun cancel(recordingId: Long) = viewModelScope.launch { queue.remove(recordingId) }
 
@@ -104,86 +94,37 @@ class AiLabsViewModel @Inject constructor(
         _keyCheck.value = KeyCheck.Idle
     }
 
-    /** 키를 실제로 한 번 써 보고, 되면 저장한다. Groq 를 처음 넣을 때는 외부 전송 안내를 먼저. */
-    fun checkKey(service: KeyService, key: String) {
+    /** 키를 실제로 한 번 써 보고, 되면 저장한다. 처음 넣을 때는 외부 전송 안내를 먼저. */
+    fun checkKey(key: String) {
         val trimmed = key.trim()
         if (trimmed.isEmpty()) return
         _keyCheck.value = KeyCheck.Checking
         viewModelScope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching {
-                    when (service) {
-                        KeyService.GROQ -> groq.verify(trimmed)
-                        KeyService.NVIDIA -> nvidia.verify(trimmed, probeModel())
-                    }
-                }
-            }
+            val result = withContext(Dispatchers.IO) { runCatching { groq.verify(trimmed) } }
             _keyCheck.value = result.fold(
-                onSuccess = {
-                    if (!settings.consented) KeyCheck.NeedsConsent(trimmed)
-                    else save(service, trimmed)
-                },
+                onSuccess = { if (!settings.consented) KeyCheck.NeedsConsent(trimmed) else save(trimmed) },
                 onFailure = { e ->
-                    if (e is AiException && (e.kind == AiException.Kind.NETWORK)) KeyCheck.Offline else KeyCheck.Invalid
+                    if (e is AiException && e.kind == AiException.Kind.NETWORK) KeyCheck.Offline else KeyCheck.Invalid
                 },
             )
         }
     }
 
     /** 외부 전송 안내에서 ‘켜기’. */
-    fun acceptConsent(service: KeyService) {
+    fun acceptConsent() {
         val pending = _keyCheck.value as? KeyCheck.NeedsConsent ?: return
         settings.consented = true
-        _keyCheck.value = save(service, pending.key)
+        _keyCheck.value = save(pending.key)
     }
 
-    fun deleteKey(service: KeyService) {
-        when (service) {
-            KeyService.GROQ -> settings.setGroqKey(null)
-            KeyService.NVIDIA -> settings.setNvidiaKey(null)
-        }
+    fun deleteKey() {
+        settings.setGroqKey(null)
         _keyCheck.value = KeyCheck.Saved
     }
 
-    private fun save(service: KeyService, key: String): KeyCheck {
-        when (service) {
-            KeyService.GROQ -> settings.setGroqKey(key)
-            KeyService.NVIDIA -> settings.setNvidiaKey(key)
-        }
+    private fun save(key: String): KeyCheck {
+        settings.setGroqKey(key)
         queue.kick()
         return KeyCheck.Saved
-    }
-
-    /** 키 확인용 모델: 가벼운 것 → 교정 모델 순으로, 지금 제공 중인 첫 모델. */
-    private suspend fun probeModel(): String {
-        val live = liveModels() ?: return NvidiaClient.PROBE_MODEL
-        return (listOf(NvidiaClient.PROBE_MODEL) + settings.modelOrder()).firstOrNull { it in live }
-            ?: NvidiaClient.PROBE_MODEL
-    }
-
-    // --- 모델 목록 ---
-
-    private val _models = MutableStateFlow(NvidiaClient.PREFERRED.map { ModelChoice(it, modelName(it), true) })
-    val models: StateFlow<List<ModelChoice>> = _models.asStateFlow()
-
-    /** 모델 고르기를 열 때 NVIDIA 에서 지금 제공 중인 모델을 확인한다(키 필요 없음). */
-    fun refreshModels() = viewModelScope.launch {
-        val live = liveModels() ?: return@launch
-        _models.value = NvidiaClient.PREFERRED.map { ModelChoice(it, modelName(it), it in live) }
-    }
-
-    private suspend fun liveModels(): Set<String>? = withContext(Dispatchers.IO) {
-        runCatching { nvidia.models().toSet() }.getOrNull()
-    }
-
-    companion object {
-        /** 화면에 보일 모델 이름. 모르는 것은 id 의 마지막 부분. */
-        fun modelName(id: String): String = when (id) {
-            "deepseek-ai/deepseek-v4.1-flash" -> "DeepSeek V4.1 Flash"
-            "moonshotai/kimi-k3" -> "Kimi K3"
-            "z-ai/glm-5.3" -> "GLM 5.3"
-            "nvidia/nemotron-3-ultra-550b-a55b" -> "Nemotron 3 Ultra"
-            else -> id.substringAfterLast('/')
-        }
     }
 }

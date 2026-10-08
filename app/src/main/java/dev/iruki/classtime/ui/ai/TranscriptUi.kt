@@ -1,5 +1,7 @@
 package dev.iruki.classtime.ui.ai
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -23,7 +25,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Notes
 import androidx.compose.material.icons.rounded.AutoAwesome
-import androidx.compose.material.icons.rounded.AutoFixHigh
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Error
 import androidx.compose.material.icons.rounded.GraphicEq
@@ -51,9 +52,14 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
@@ -64,12 +70,13 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.LineBreak
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.iruki.classtime.R
 import dev.iruki.classtime.ai.Paragraph
 import dev.iruki.classtime.ai.Paragraphs
-import dev.iruki.classtime.ai.TranscriptCorrector
+import dev.iruki.classtime.ai.Timestamps
 import dev.iruki.classtime.ai.TranscriptJson
 import dev.iruki.classtime.data.Transcript
 import dev.iruki.classtime.data.TranscriptError
@@ -77,6 +84,8 @@ import dev.iruki.classtime.data.TranscriptState
 import dev.iruki.classtime.ui.common.clockLabel
 import dev.iruki.classtime.ui.common.formatSpan
 import dev.iruki.classtime.ui.theme.AppTheme
+import dev.iruki.classtime.util.AppPermissions
+import dev.iruki.classtime.util.SystemScreens
 import java.time.Instant
 import java.time.ZoneId
 
@@ -87,33 +96,32 @@ import java.time.ZoneId
  */
 data class TranscriptView(
     val transcript: Transcript,
-    val corrected: List<Paragraph>,
-    val raw: List<Paragraph>,
+    val paragraphs: List<Paragraph>,
     val ahead: Int,
 ) {
     val done get() = transcript.stateEnum == TranscriptState.DONE
-    /** 교정 모델이 남아 있으면 다듬은 글이 있는 것. */
-    val hasCorrection get() = done && transcript.model.isNotBlank()
 
     companion object {
         fun of(t: Transcript, ahead: Int): TranscriptView {
-            val segments = TranscriptJson.segments(t.segments)
-            return TranscriptView(t, TranscriptJson.paragraphs(t.paragraphs), Paragraphs.fromSegments(segments), ahead)
+            // 끝난 작업은 저장된 문단을, 진행 중이면 받아 적은 데까지를 문단으로 묶어 보여 준다.
+            val paragraphs = TranscriptJson.paragraphs(t.paragraphs).takeIf { it.isNotEmpty() && t.stateEnum == TranscriptState.DONE }
+                ?: Paragraphs.fromSegments(TranscriptJson.segments(t.segments))
+            return TranscriptView(t, paragraphs, ahead)
         }
     }
 }
 
 /** 진행률 0..1. 단계에 진행 개념이 없으면 null(대기·나누기). */
 internal fun progressOf(t: Transcript): Float? = when (t.stateEnum) {
-    TranscriptState.TRANSCRIBING -> TranscriptJson.plan(t.plan).size.takeIf { it > 0 }?.let { t.chunksDone.toFloat() / it }
-    TranscriptState.CORRECTING -> t.sectionsTotal.takeIf { it > 0 }?.let { t.sectionsDone.toFloat() / it }
+    TranscriptState.TRANSCRIBING, TranscriptState.CORRECTING ->
+        TranscriptJson.plan(t.plan).size.takeIf { it > 0 }?.let { t.chunksDone.toFloat() / it }
     else -> null
 }
 
 /** “3/8” 같은 걸음 수. 없으면 빈 문자열. */
 internal fun stepCount(t: Transcript): String = when (t.stateEnum) {
-    TranscriptState.TRANSCRIBING -> TranscriptJson.plan(t.plan).size.takeIf { it > 0 }?.let { "${t.chunksDone}/$it" }.orEmpty()
-    TranscriptState.CORRECTING -> t.sectionsTotal.takeIf { it > 0 }?.let { "${t.sectionsDone}/$it" }.orEmpty()
+    TranscriptState.TRANSCRIBING, TranscriptState.CORRECTING ->
+        TranscriptJson.plan(t.plan).size.takeIf { it > 0 }?.let { "${t.chunksDone}/$it" }.orEmpty()
     else -> ""
 }
 
@@ -124,7 +132,6 @@ internal fun stageLabel(t: Transcript): String {
         when (t.stateEnum) {
             TranscriptState.QUEUED -> R.string.ai_state_queued
             TranscriptState.PREPARING -> R.string.ai_state_preparing
-            TranscriptState.CORRECTING -> R.string.ai_state_correcting
             else -> R.string.ai_state_transcribing
         }
     )
@@ -137,6 +144,15 @@ internal fun stageLabel(t: Transcript): String {
 internal fun clockText(epochMs: Long): String {
     val t = Instant.ofEpochMilli(epochMs).atZone(ZoneId.systemDefault()).toLocalTime()
     return clockLabel(t.hour * 60 + t.minute)
+}
+
+/**
+ * 시트 안의 목록이 맨 위에 닿은 뒤 남는 스크롤을 여기서 먹어 버린다. 그래야 글을 내리다가
+ * 손가락이 이어서 아래로 끌려도 시트가 따라 내려가 닫히지 않는다. 시트는 손잡이·머리로만 끈다.
+ */
+internal val KeepScrollInside = object : NestedScrollConnection {
+    override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset = available
+    override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity = available
 }
 
 // --- 녹음 목록의 상태 표시 ---
@@ -207,7 +223,7 @@ fun findHits(paragraphs: List<Paragraph>, query: String): List<Hit> {
  * 텍스트 탭 본문. 상태에 따라 빈 화면 · 진행 카드(+받아 적은 부분) · 대본을 그린다.
  *
  * 대본은 재생 위치의 문단을 보조 컨테이너로 칠하고 그 문단을 따라 스크롤한다. 사용자가 직접
- * 스크롤하면 따라가기를 멈추고 ‘지금 위치로’ 버튼을 띄운다.
+ * 스크롤하면 따라가기를 멈추고 ‘지금 위치로’ 버튼을 띄운다. 문단을 누르면 그 자리부터 재생.
  */
 @Composable
 fun TranscriptPane(
@@ -218,8 +234,6 @@ fun TranscriptPane(
     positionMs: Int,
     query: String,
     hitIndex: Int,
-    showRaw: Boolean,
-    onToggleRaw: () -> Unit,
     onSeek: (Int) -> Unit,
     onConvert: () -> Unit,
     onCancel: () -> Unit,
@@ -227,10 +241,10 @@ fun TranscriptPane(
     onOpenLabs: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Box(modifier.fillMaxSize()) {
+    Box(modifier.fillMaxSize().nestedScroll(KeepScrollInside)) {
         when {
             view == null -> EmptyText(durationMs, canConvert, onConvert)
-            view.done -> Reading(view, positionMs, query, hitIndex, showRaw, onToggleRaw, onSeek)
+            view.done -> Reading(view, positionMs, query, hitIndex, onSeek)
             else -> Progress(view, paused, onCancel, onRetry, onOpenLabs)
         }
     }
@@ -268,16 +282,23 @@ private fun EmptyText(durationMs: Int, canConvert: Boolean, onConvert: () -> Uni
     }
 }
 
-/** 진행 카드 + 아래에 이미 받아 적은 부분(다듬기 전) 미리 보기. */
+/** 진행 카드 + 아래에 이미 받아 적은 부분 미리 보기. */
 @Composable
 private fun Progress(view: TranscriptView, paused: Boolean, onCancel: () -> Unit, onRetry: () -> Unit, onOpenLabs: () -> Unit) {
     val c = MaterialTheme.colorScheme
+    val context = LocalContext.current
     val t = view.transcript
     val now = System.currentTimeMillis()
     val failed = t.stateEnum == TranscriptState.FAILED
     val quota = !failed && t.waitUntil > now && t.errorEnum == TranscriptError.QUOTA
     val retrying = !failed && t.waitUntil > now && t.errorEnum == TranscriptError.SERVER
     val offline = !failed && t.errorEnum == TranscriptError.NETWORK
+    val needsAccess = failed && t.errorEnum == TranscriptError.PERMISSION
+
+    // 들여온 파일을 읽을 권한: 허용하면 바로 다시 시도, 다시 묻지 않음 상태면 앱 정보 화면으로.
+    val access = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) onRetry() else SystemScreens.openAppDetails(context)
+    }
 
     data class Look(val bg: Color, val fg: Color, val iconFg: Color, val subFg: Color, val icon: ImageVector)
     val look = when {
@@ -285,7 +306,6 @@ private fun Progress(view: TranscriptView, paused: Boolean, onCancel: () -> Unit
         quota -> Look(AppTheme.colors.cautionContainer, AppTheme.colors.onCautionContainer, AppTheme.colors.caution, AppTheme.colors.onCautionContainer, Icons.Rounded.HourglassTop)
         offline -> Look(c.surfaceContainerHigh, c.onSurface, c.onSurfaceVariant, c.onSurfaceVariant, Icons.Rounded.WifiOff)
         t.stateEnum == TranscriptState.QUEUED -> Look(c.surfaceContainerHigh, c.onSurface, c.onSurfaceVariant, c.onSurfaceVariant, Icons.Rounded.Schedule)
-        t.stateEnum == TranscriptState.CORRECTING -> Look(c.surfaceContainerHigh, c.onSurface, c.primary, c.onSurfaceVariant, Icons.Rounded.AutoFixHigh)
         else -> Look(c.surfaceContainerHigh, c.onSurface, c.primary, c.onSurfaceVariant, Icons.Rounded.GraphicEq)
     }
     val title = when {
@@ -295,7 +315,6 @@ private fun Progress(view: TranscriptView, paused: Boolean, onCancel: () -> Unit
             when (t.stateEnum) {
                 TranscriptState.QUEUED -> R.string.ai_state_queued
                 TranscriptState.PREPARING -> R.string.ai_state_preparing
-                TranscriptState.CORRECTING -> R.string.ai_state_correcting
                 else -> R.string.ai_state_transcribing
             }
         )
@@ -309,7 +328,9 @@ private fun Progress(view: TranscriptView, paused: Boolean, onCancel: () -> Unit
         failed -> stringResource(
             when (t.errorEnum) {
                 TranscriptError.GROQ_KEY -> R.string.ai_fail_key
+                TranscriptError.PERMISSION -> R.string.ai_fail_permission
                 TranscriptError.FILE -> R.string.ai_fail_file
+                TranscriptError.FORMAT -> R.string.ai_fail_format
                 TranscriptError.NO_SPEECH -> R.string.ai_fail_no_speech
                 TranscriptError.SERVER -> R.string.ai_fail_server
                 else -> R.string.ai_fail_unknown
@@ -341,10 +362,25 @@ private fun Progress(view: TranscriptView, paused: Boolean, onCancel: () -> Unit
                     if (detail != null) {
                         Text(detail, style = MaterialTheme.typography.bodyMedium, color = look.subFg, modifier = Modifier.padding(start = 36.dp))
                     }
+                    // 원인을 찾을 수 있게 실패의 기술적 원인 한 줄(작게).
+                    if (failed && t.errorDetail.isNotBlank()) {
+                        Text(
+                            t.errorDetail,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = look.subFg.copy(alpha = 0.8f),
+                            maxLines = 2,
+                            modifier = Modifier.padding(start = 36.dp),
+                        )
+                    }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                         if (failed) {
-                            if (t.errorEnum == TranscriptError.GROQ_KEY) {
-                                TextButton(onClick = onOpenLabs) { Text(stringResource(R.string.ai_action_check_key), color = look.subFg) }
+                            when {
+                                t.errorEnum == TranscriptError.GROQ_KEY ->
+                                    TextButton(onClick = onOpenLabs) { Text(stringResource(R.string.ai_action_check_key), color = look.subFg) }
+                                needsAccess ->
+                                    TextButton(onClick = { access.launch(AppPermissions.audioReadPermission()) }) {
+                                        Text(stringResource(R.string.ai_action_allow_access), color = look.subFg)
+                                    }
                             }
                             Button(onClick = onRetry) { Text(stringResource(R.string.ai_action_retry)) }
                         } else {
@@ -354,7 +390,7 @@ private fun Progress(view: TranscriptView, paused: Boolean, onCancel: () -> Unit
                 }
             }
         }
-        if (view.raw.isNotEmpty()) {
+        if (view.paragraphs.isNotEmpty()) {
             item(key = "partial_h") {
                 Text(
                     stringResource(R.string.ai_text_partial),
@@ -363,11 +399,11 @@ private fun Progress(view: TranscriptView, paused: Boolean, onCancel: () -> Unit
                     modifier = Modifier.padding(start = 12.dp, top = 20.dp, bottom = 8.dp),
                 )
             }
-            itemsIndexed(view.raw, key = { i, _ -> "p$i" }) { _, p ->
+            itemsIndexed(view.paragraphs, key = { i, _ -> "p$i" }) { _, p ->
                 Text(
                     buildAnnotatedString {
                         pushStyle(SpanStyle(fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = c.outline))
-                        append(TranscriptCorrector.stamp(p.startMs))
+                        append(Timestamps.format(p.startMs))
                         pop()
                         append("  ")
                         append(p.text)
@@ -381,16 +417,15 @@ private fun Progress(view: TranscriptView, paused: Boolean, onCancel: () -> Unit
     }
 }
 
-/** 나누기 → 받아 적기 → 다듬기 세 단계. 교정을 하지 않는 작업은 두 단계. */
+/** 나누기 → 받아 적기 두 단계. */
 @Composable
 private fun Steps(t: Transcript, modifier: Modifier = Modifier) {
     val c = MaterialTheme.colorScheme
     val now = when (t.stateEnum) {
         TranscriptState.QUEUED, TranscriptState.PREPARING -> 0
-        TranscriptState.TRANSCRIBING -> 1
-        else -> 2
+        else -> 1
     }
-    val labels = listOfNotNull(R.string.ai_step_split, R.string.ai_step_transcribe, if (t.correct) R.string.ai_step_correct else null)
+    val labels = listOf(R.string.ai_step_split, R.string.ai_step_transcribe)
     Row(modifier, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         labels.forEachIndexed { i, label ->
             val icon = when {
@@ -414,68 +449,42 @@ private fun Reading(
     positionMs: Int,
     query: String,
     hitIndex: Int,
-    showRaw: Boolean,
-    onToggleRaw: () -> Unit,
     onSeek: (Int) -> Unit,
 ) {
     val c = MaterialTheme.colorScheme
-    val paragraphs = if (showRaw || !view.hasCorrection) view.raw else view.corrected
+    val paragraphs = view.paragraphs
     val current = paragraphs.indexOfLast { it.startMs <= positionMs }.coerceAtLeast(0)
     val hits = remember(paragraphs, query) { findHits(paragraphs, query) }
-    val list = rememberLazyListState()
+    val list = rememberLazyListState(initialFirstVisibleItemIndex = (current - 1).coerceAtLeast(0))
     var following by rememberSaveable { mutableStateOf(true) }
 
     // 손으로 끌면 따라가기를 멈춘다(프로그램 스크롤은 끌기가 아니다).
     LaunchedEffect(list) {
         list.interactionSource.interactions.collect { if (it is DragInteraction.Start) following = false }
     }
+    // 지금 문단의 바로 앞 문단이 맨 위에 오게: 앞 문맥을 보며 읽을 수 있다.
     LaunchedEffect(current, following, query.isBlank()) {
-        if (following && query.isBlank()) list.animateScrollToItem((current + HEADER_ITEMS - 1).coerceAtLeast(0))
+        if (following && query.isBlank()) list.animateScrollToItem((current - 1).coerceAtLeast(0))
     }
     LaunchedEffect(hitIndex, hits) {
-        hits.getOrNull(hitIndex)?.let { list.animateScrollToItem(it.paragraph + HEADER_ITEMS) }
+        hits.getOrNull(hitIndex)?.let { list.animateScrollToItem((it.paragraph - 1).coerceAtLeast(0)) }
     }
 
     Box(Modifier.fillMaxSize()) {
-        LazyColumn(state = list, contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 24.dp)) {
-            item(key = "meta") {
-                Row(Modifier.fillMaxWidth().height(40.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    val t = view.transcript
-                    val label = when {
-                        !view.hasCorrection -> R.string.ai_text_raw
-                        showRaw -> R.string.ai_text_raw
-                        t.errorEnum == TranscriptError.CORRECTION -> R.string.ai_text_partly
-                        else -> R.string.ai_text_corrected
-                    }
-                    Icon(
-                        if (view.hasCorrection && !showRaw) Icons.Rounded.AutoFixHigh else Icons.Rounded.GraphicEq,
-                        contentDescription = null, tint = c.onSurfaceVariant, modifier = Modifier.size(16.dp),
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text(stringResource(label), style = MaterialTheme.typography.labelMedium, color = c.onSurfaceVariant, modifier = Modifier.weight(1f))
-                    if (view.hasCorrection) {
-                        TextButton(onClick = onToggleRaw) {
-                            Text(stringResource(if (showRaw) R.string.ai_text_show_corrected else R.string.ai_text_show_raw))
-                        }
-                    }
-                }
-            }
+        LazyColumn(state = list, contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 96.dp)) {
             itemsIndexed(paragraphs, key = { i, p -> "${p.startMs}_$i" }) { i, p ->
                 val on = i == current && query.isBlank()
-                val stamp = TranscriptCorrector.stamp(p.startMs)
+                val stamp = Timestamps.format(p.startMs)
+                val seekCd = stringResource(R.string.ai_text_seek, stamp)
                 Surface(
+                    onClick = { following = true; onSeek(p.startMs.toInt()) },
                     color = if (on) c.secondaryContainer else Color.Transparent,
                     contentColor = if (on) c.onSecondaryContainer else c.onSurface,
                     shape = RoundedCornerShape(16.dp),
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp).semantics { contentDescription = seekCd },
                 ) {
-                    Column(Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 14.dp)) {
-                        val seekCd = stringResource(R.string.ai_text_seek, stamp)
-                        TextButton(
-                            onClick = { following = true; onSeek(p.startMs.toInt()) },
-                            contentPadding = PaddingValues(horizontal = 8.dp),
-                            modifier = Modifier.height(32.dp).semantics { contentDescription = seekCd },
-                        ) {
+                    Column(Modifier.padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 14.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.height(24.dp)) {
                             if (on) {
                                 Icon(Icons.Rounded.GraphicEq, contentDescription = null, modifier = Modifier.size(14.dp))
                                 Spacer(Modifier.width(4.dp))
@@ -489,7 +498,7 @@ private fun Reading(
                         Text(
                             highlighted(p.text, i, hits, hitIndex, query.length),
                             style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 26.sp, lineBreak = LineBreak.Paragraph),
-                            modifier = Modifier.padding(start = 0.dp, top = 2.dp),
+                            modifier = Modifier.padding(top = 2.dp),
                         )
                     }
                 }
@@ -512,9 +521,6 @@ private fun Reading(
         }
     }
 }
-
-/** 메타 줄 하나가 문단 앞에 있다. */
-private const val HEADER_ITEMS = 1
 
 @Composable
 private fun highlighted(text: String, paragraph: Int, hits: List<Hit>, current: Int, length: Int): AnnotatedString {

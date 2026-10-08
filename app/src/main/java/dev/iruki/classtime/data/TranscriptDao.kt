@@ -17,6 +17,9 @@ interface TranscriptDao {
     @Query("SELECT * FROM transcripts WHERE recordingId = :recordingId")
     suspend fun get(recordingId: Long): Transcript?
 
+    @Query("SELECT * FROM transcripts WHERE state = 'DONE'")
+    suspend fun done(): List<Transcript>
+
     /** 아직 끝나지 않은 작업, 대기열 순서대로. */
     @Query("SELECT * FROM transcripts WHERE state NOT IN ('DONE', 'FAILED') ORDER BY queuedAt")
     suspend fun pending(): List<Transcript>

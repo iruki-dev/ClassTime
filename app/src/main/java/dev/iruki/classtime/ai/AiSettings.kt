@@ -11,22 +11,15 @@ import org.json.JSONObject
 data class AiConfig(
     /** 저장된 Groq 키의 끝 네 자리. 없으면 기능을 켤 수 없다. */
     val groqKeyHint: String? = null,
-    val nvidiaKeyHint: String? = null,
     /** 저장된 키가 나중에 거부됨(만료·삭제). 설정에서 다시 넣어야 한다. */
     val groqRejected: Boolean = false,
-    val nvidiaRejected: Boolean = false,
     /** 녹음이 끝나면 바로 변환. */
     val autoTranscribe: Boolean = true,
-    /** NVIDIA 키가 있을 때 교정까지. */
-    val correct: Boolean = true,
-    /** 고른 교정 모델. 빈 값이면 [NvidiaClient.PREFERRED] 순서. */
-    val model: String = "",
     /** 실험적 기능 화면의 ‘사용’ 스위치. 끄면 키는 남기고 변환만 멈춘다. */
     val switchOn: Boolean = true,
 ) {
     /** 변환을 할 수 있는 상태(키 있음 + 스위치 켬). */
     val enabled get() = groqKeyHint != null && switchOn
-    val canCorrect get() = enabled && nvidiaKeyHint != null && correct
 }
 
 /**
@@ -37,11 +30,20 @@ class AiSettings(context: Context, private val secrets: Secrets) {
 
     private val prefs = context.applicationContext.getSharedPreferences("classtime_ai", Context.MODE_PRIVATE)
 
+    init {
+        // LLM 교정(NVIDIA)을 뺐다. 예전에 넣은 키와 설정은 남겨 둘 이유가 없으니 지운다.
+        if (prefs.contains(LEGACY_NVIDIA_HINT) || prefs.contains(LEGACY_MODEL) || prefs.contains(LEGACY_CORRECT)) {
+            secrets.put(LEGACY_NVIDIA_KEY, null)
+            prefs.edit()
+                .remove(LEGACY_NVIDIA_HINT).remove(LEGACY_NVIDIA_REJECTED).remove(LEGACY_MODEL).remove(LEGACY_CORRECT)
+                .apply()
+        }
+    }
+
     private val _config = MutableStateFlow(read())
     val config: StateFlow<AiConfig> = _config.asStateFlow()
 
     fun groqKey(): String? = secrets.get(KEY_GROQ)
-    fun nvidiaKey(): String? = secrets.get(KEY_NVIDIA)
 
     /** 확인을 마친 키만 저장한다. null 이면 지운다. */
     fun setGroqKey(key: String?) {
@@ -50,29 +52,19 @@ class AiSettings(context: Context, private val secrets: Secrets) {
         refresh()
     }
 
-    fun setNvidiaKey(key: String?) {
-        secrets.put(KEY_NVIDIA, key?.trim())
-        prefs.edit().putString(HINT_NVIDIA, key?.trim()?.let(::hint)).putBoolean(REJECTED_NVIDIA, false).apply()
-        refresh()
-    }
-
-    fun markRejected(groq: Boolean) {
-        prefs.edit().putBoolean(if (groq) REJECTED_GROQ else REJECTED_NVIDIA, true).apply()
+    /** 저장된 Groq 키가 거부됐다(만료·삭제). */
+    fun markRejected() {
+        prefs.edit().putBoolean(REJECTED_GROQ, true).apply()
         refresh()
     }
 
     fun setAutoTranscribe(on: Boolean) = edit { putBoolean(AUTO, on) }
-    fun setCorrect(on: Boolean) = edit { putBoolean(CORRECT, on) }
-    fun setModel(model: String) = edit { putString(MODEL, model) }
     fun setSwitchOn(on: Boolean) = edit { putBoolean(SWITCH, on) }
 
     /** 클라우드로 소리를 보낸다는 안내를 확인했는지. 처음 켤 때 한 번 보여 준다. */
     var consented: Boolean
         get() = prefs.getBoolean(CONSENT, false)
         set(value) = prefs.edit().putBoolean(CONSENT, value).apply()
-
-    /** 교정에 쓸 모델 순서: 고른 것 → 기본 순서. */
-    fun modelOrder(): List<String> = (listOf(_config.value.model) + NvidiaClient.PREFERRED).filter { it.isNotBlank() }.distinct()
 
     // --- 전송 기록 (Groq 한도) ---
 
@@ -108,25 +100,21 @@ class AiSettings(context: Context, private val secrets: Secrets) {
 
     private fun read() = AiConfig(
         groqKeyHint = prefs.getString(HINT_GROQ, null),
-        nvidiaKeyHint = prefs.getString(HINT_NVIDIA, null),
         groqRejected = prefs.getBoolean(REJECTED_GROQ, false),
-        nvidiaRejected = prefs.getBoolean(REJECTED_NVIDIA, false),
         autoTranscribe = prefs.getBoolean(AUTO, true),
-        correct = prefs.getBoolean(CORRECT, true),
-        model = prefs.getString(MODEL, "") ?: "",
         switchOn = prefs.getBoolean(SWITCH, true),
     )
 
     companion object {
         private const val KEY_GROQ = "groq"
-        private const val KEY_NVIDIA = "nvidia"
         private const val HINT_GROQ = "groq_hint"
-        private const val HINT_NVIDIA = "nvidia_hint"
         private const val REJECTED_GROQ = "groq_rejected"
-        private const val REJECTED_NVIDIA = "nvidia_rejected"
         private const val AUTO = "auto_transcribe"
-        private const val CORRECT = "correct"
-        private const val MODEL = "model"
+        private const val LEGACY_NVIDIA_KEY = "nvidia"
+        private const val LEGACY_NVIDIA_HINT = "nvidia_hint"
+        private const val LEGACY_NVIDIA_REJECTED = "nvidia_rejected"
+        private const val LEGACY_CORRECT = "correct"
+        private const val LEGACY_MODEL = "model"
         private const val SWITCH = "switch_on"
         private const val CONSENT = "consent"
         private const val USAGE = "groq_usage"

@@ -42,10 +42,11 @@ class LibraryMaintenance @Inject constructor(
             courses.firstOrNull { it.subject == subject }?.id
         }
         plan.toAdd.forEach { repo.insertRecording(it) }
+        plan.toRepair.forEach { repo.updateRecording(it) }
         // 목록에는 있는데 폴더에서 안 보인 것: 정말 없는지 하나씩 확인한 뒤에만 지운다.
         val gone = plan.missingCandidates.filter { !storage.exists(Uri.parse(it.uri)) }
         gone.forEach { repo.deleteRecordingRow(it.id) }
-        AppLog.i(TAG, "폴더 검사: 추가 ${plan.toAdd.size}, 정리 ${gone.size} (폴더 ${found.size}개)")
+        AppLog.i(TAG, "폴더 검사: 추가 ${plan.toAdd.size}, 정리 ${gone.size}, 고침 ${plan.toRepair.size} (폴더 ${found.size}개)")
         RescanResult(plan.toAdd.size, gone.size)
     }
 

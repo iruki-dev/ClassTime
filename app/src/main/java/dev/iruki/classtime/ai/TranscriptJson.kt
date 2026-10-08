@@ -12,13 +12,31 @@ data class Paragraph(val startMs: Long, val text: String)
 /** [dev.iruki.classtime.data.Transcript] 의 JSON 칸을 읽고 쓴다. 키는 짧게(용량). */
 object TranscriptJson {
 
-    fun plan(ranges: List<LongRange>): String =
-        JSONArray(ranges.map { JSONArray(listOf(it.first, it.last)) }).toString()
+    /** 조각 계획. `[{"p":[[시작,끝],…],"r":1}, …]` (r 은 다시 받아 적는 조각만). */
+    fun plan(chunks: List<Chunk>): String =
+        JSONArray(
+            chunks.map { c ->
+                JSONObject().put("p", JSONArray(c.pieces.map { JSONArray(listOf(it.first, it.last)) }))
+                    .apply { if (c.retry) put("r", 1) }
+            }
+        ).toString()
 
-    fun plan(json: String): List<LongRange> {
+    /** 예전 형식(`[[시작,끝],…]`, 조각마다 구간 하나)도 읽는다. */
+    fun plan(json: String): List<Chunk> {
         if (json.isBlank()) return emptyList()
         val a = JSONArray(json)
-        return (0 until a.length()).map { i -> a.getJSONArray(i).let { it.getLong(0)..it.getLong(1) } }
+        return (0 until a.length()).map { i ->
+            val o = a.optJSONObject(i)
+            if (o == null) {
+                Chunk(listOf(a.getJSONArray(i).let { it.getLong(0)..it.getLong(1) }))
+            } else {
+                val p = o.getJSONArray("p")
+                Chunk(
+                    pieces = (0 until p.length()).map { k -> p.getJSONArray(k).let { it.getLong(0)..it.getLong(1) } },
+                    retry = o.optInt("r") == 1,
+                )
+            }
+        }
     }
 
     fun segments(list: List<Segment>): String =
@@ -41,5 +59,16 @@ object TranscriptJson {
         return (0 until a.length()).map { i ->
             a.getJSONObject(i).let { Paragraph(it.getLong("s"), it.getString("t")) }
         }
+    }
+}
+
+/** 대본의 시각 표기. 1시간 미만은 mm:ss, 이상은 h:mm:ss. */
+object Timestamps {
+    fun format(ms: Long): String {
+        val total = ms / 1000
+        val h = total / 3600
+        val m = (total % 3600) / 60
+        val s = total % 60
+        return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%02d:%02d".format(m, s)
     }
 }

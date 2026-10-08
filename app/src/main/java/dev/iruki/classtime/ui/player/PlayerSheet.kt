@@ -15,6 +15,13 @@ import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.snapshotFlow
+import androidx.activity.compose.BackHandler
+import androidx.compose.material3.ModalBottomSheetProperties
+import androidx.compose.material3.SheetState
+import androidx.compose.material3.SheetValue
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.focus.FocusRequester
@@ -127,28 +134,49 @@ fun PlayerSheet(
     // 실험적 기능이 켜져 있거나 이미 텍스트가 있으면 ‘오디오 | 텍스트’ 탭을 보인다.
     val view = text.view
     val showTabs = text.ai.enabled || view != null
-    var tab by rememberSaveable(recording.id) { mutableStateOf(if (showTabs) text.initialTab else PlayerTab.AUDIO) }
+    // 보던 탭은 앱 전체에서 기억한다(닫았다 열어도, 다른 녹음을 열어도 그대로).
+    val tab = if (showTabs) text.tab else PlayerTab.AUDIO
     var searching by rememberSaveable(recording.id) { mutableStateOf(false) }
     var query by rememberSaveable(recording.id) { mutableStateOf("") }
     var hitIndex by rememberSaveable(recording.id) { mutableIntStateOf(0) }
-    var showRaw by rememberSaveable(recording.id) { mutableStateOf(false) }
     val onText = showTabs && tab == PlayerTab.TEXT
     val reading = view?.done == true
-    val shown = when {
-        view == null -> emptyList()
-        showRaw || !view.hasCorrection -> view.raw
-        else -> view.corrected
-    }
+    val shown = view?.paragraphs.orEmpty()
     val hits = remember(shown, query) { findHits(shown, query) }
     val copiedMessage = stringResource(R.string.ai_copied)
     val context = LocalContext.current
 
+    // 아래로 끌어 닫기는 시트를 절반 넘게 내렸을 때만. 그보다 덜 끌고 놓으면 제자리로 돌아온다
+    // (기본값은 조금만 끌거나 살짝 튕겨도 닫혀 버려, 끌다가 마음을 바꿀 수 없었다).
+    val screenPx = with(LocalDensity.current) { LocalConfiguration.current.screenHeightDp.dp.toPx() }
+    var expandedTop by remember { mutableFloatStateOf(0f) }
+    val sheetHolder = remember { arrayOfNulls<SheetState>(1) }
+    val sheetState = rememberModalBottomSheetState(
+        skipPartiallyExpanded = true,
+        confirmValueChange = { value ->
+            if (value != SheetValue.Hidden) return@rememberModalBottomSheetState true
+            val offset = runCatching { sheetHolder[0]?.requireOffset() }.getOrNull() ?: return@rememberModalBottomSheetState true
+            val travel = (screenPx - expandedTop).coerceAtLeast(1f)
+            val pulled = (offset - expandedTop) / travel
+            // 거의 안 끌린 상태 = 뒤로 가기·바깥 누르기로 닫는 것. 그건 그대로 닫는다.
+            pulled < 0.02f || pulled >= 0.5f
+        },
+    )
+    sheetHolder[0] = sheetState
+    LaunchedEffect(sheetState) {
+        snapshotFlow { sheetState.currentValue }.collect {
+            if (it == SheetValue.Expanded) runCatching { expandedTop = sheetState.requireOffset() }
+        }
+    }
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        sheetState = sheetState,
         containerColor = c.surfaceContainerLow,
         dragHandle = null,
+        properties = ModalBottomSheetProperties(shouldDismissOnBackPress = !searching),
     ) {
+        // 뒤로: 검색 중이면 검색부터 닫는다(시트는 그다음 뒤로에서 닫힌다).
+        BackHandler(enabled = searching) { searching = false; query = "" }
         Column(
             (if (showTabs) Modifier.fillMaxHeight() else Modifier)
                 .navigationBarsPadding()
@@ -198,12 +226,6 @@ fun PlayerSheet(
                                 text = { Text(stringResource(R.string.ai_menu_share)) },
                                 onClick = { menuOpen = false; text.onShare(shown) },
                             )
-                            if (text.ai.canCorrect) {
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.ai_menu_recorrect)) },
-                                    onClick = { menuOpen = false; showRaw = false; text.onRecorrect() },
-                                )
-                            }
                             if (text.ai.enabled) {
                                 DropdownMenuItem(
                                     text = { Text(stringResource(R.string.ai_menu_reconvert)) },
@@ -229,7 +251,7 @@ fun PlayerSheet(
             }
 
             if (showTabs) {
-                ViewTabs(tab, onPick = { tab = it; if (it == PlayerTab.AUDIO) searching = false })
+                ViewTabs(tab, onPick = { text.onTab(it); if (it == PlayerTab.AUDIO) { searching = false; query = "" } })
             }
 
             if (onText) {
@@ -241,8 +263,6 @@ fun PlayerSheet(
                     positionMs = position.toInt(),
                     query = if (searching) query else "",
                     hitIndex = hitIndex,
-                    showRaw = showRaw,
-                    onToggleRaw = { showRaw = !showRaw },
                     onSeek = { onSeek(it); if (!state.playing) onToggle() },
                     onConvert = text.onConvert,
                     onCancel = text.onCancel,
@@ -383,11 +403,12 @@ enum class PlayerTab { AUDIO, TEXT }
 data class PlayerText(
     val ai: AiConfig = AiConfig(),
     val view: TranscriptView? = null,
-    val initialTab: PlayerTab = PlayerTab.AUDIO,
+    /** 지금 보는 탭. 바꾸면 [onTab] 으로 알린다. */
+    val tab: PlayerTab = PlayerTab.AUDIO,
+    val onTab: (PlayerTab) -> Unit = {},
     val onConvert: () -> Unit = {},
     val onCancel: () -> Unit = {},
     val onRetry: () -> Unit = {},
-    val onRecorrect: () -> Unit = {},
     val onReconvert: () -> Unit = {},
     val onDeleteText: () -> Unit = {},
     val onCopy: (List<Paragraph>) -> Unit = {},

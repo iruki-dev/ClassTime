@@ -56,9 +56,14 @@ class RecordingStorage(private val context: Context) {
     }
 
     /** 녹음이 끝난 뒤 호출. 다른 앱(파일 탐색기, PC)에서 보이도록 pending 을 해제하고 크기를 기록한다. */
-    fun finalize(uri: Uri, legacyFile: File?): Long {
+    /**
+     * 녹음을 확정(pending 해제)하고 파일 크기를 돌려준다. 크기를 읽지 못하면 null —
+     * 그때 0 으로 덮어쓰면 멀쩡한 녹음이 ‘0 B’로 보이고 다시 열리지 않는다.
+     */
+    fun finalize(uri: Uri, legacyFile: File?): Long? {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val values = ContentValues().apply { put(MediaStore.Audio.Media.IS_PENDING, 0) }
+            // 다른 앱(또는 재설치 전의 이 앱)이 만든 파일은 바꿀 권한이 없다. 이미 확정된 파일이므로 괜찮다.
             runCatching { context.contentResolver.update(uri, values, null, null) }
             return querySize(uri)
         }
@@ -69,19 +74,20 @@ class RecordingStorage(private val context: Context) {
             android.media.MediaScannerConnection.scanFile(
                 context, arrayOf(file.absolutePath), arrayOf("audio/mp4"), null
             )
-            return file.length()
+            return file.takeIf { it.exists() }?.length()
         }
         return querySize(uri)
     }
 
-    fun querySize(uri: Uri): Long = runCatching {
+    /** 파일 크기. 없거나 열 수 없으면 null. */
+    fun querySize(uri: Uri): Long? = runCatching {
         if (uri.scheme == "file") {
-            uri.path?.let { File(it).length() } ?: 0L
+            uri.path?.let { File(it) }?.takeIf { it.exists() }?.length()
         } else {
             context.contentResolver.openFileDescriptor(uri, "r")
-                ?.use { it.statSize.coerceAtLeast(0) } ?: 0L
+                ?.use { it.statSize.coerceAtLeast(0) }
         }
-    }.getOrDefault(0L)
+    }.getOrNull()
 
     /**
      * 완성된 파일의 실제 재생 길이(ms). recorder.stop() 이 실패해 경과시간을 못 구했거나,
@@ -120,6 +126,21 @@ class RecordingStorage(private val context: Context) {
             old.renameTo(File(old.parentFile, newDisplayName))
         }
     }.getOrDefault(false)
+
+    /** 파일을 열 수 있는지와, 못 열면 왜인지. */
+    enum class Access { OK, PERMISSION, MISSING }
+
+    fun access(uri: Uri): Access = try {
+        if (uri.scheme == "file") {
+            if (uri.path?.let { File(it).canRead() } == true) Access.OK else Access.MISSING
+        } else {
+            context.contentResolver.openFileDescriptor(uri, "r")?.use { Access.OK } ?: Access.MISSING
+        }
+    } catch (e: SecurityException) {
+        Access.PERMISSION
+    } catch (e: Exception) {
+        Access.MISSING
+    }
 
     /**
      * 파일이 아직 있는지. 열 수 없는 이유가 ‘없음’일 때만 false 다. 권한 문제(다른 앱이 만든 파일)

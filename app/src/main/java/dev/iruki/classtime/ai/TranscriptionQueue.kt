@@ -7,6 +7,7 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import dev.iruki.classtime.data.Recording
+import dev.iruki.classtime.data.RecordingDao
 import dev.iruki.classtime.data.Transcript
 import dev.iruki.classtime.data.TranscriptDao
 import dev.iruki.classtime.data.TranscriptState
@@ -24,6 +25,8 @@ class TranscriptionQueue(
     private val context: Context,
     private val dao: TranscriptDao,
     private val settings: AiSettings,
+    private val recordings: RecordingDao,
+    private val files: TextFiles,
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
 
@@ -31,44 +34,29 @@ class TranscriptionQueue(
     fun observeAll(): Flow<List<Transcript>> = dao.observeAll()
 
     /**
-     * 변환을 맡긴다. 이미 끝난 것도 다시 맡길 수 있다(처음부터).
-     * @param correct null 이면 지금 설정을 따른다.
+     * 변환을 맡긴다. 이미 끝난 것도 다시 맡길 수 있다(처음부터). 텍스트 파일은 새 결과가 나오면
+     * 덮어쓰므로, 다시 변환이 실패해도 예전 파일은 남는다.
      */
-    suspend fun enqueue(recordingId: Long, correct: Boolean? = null) {
+    suspend fun enqueue(recordingId: Long) {
         val existing = dao.get(recordingId)
         if (existing != null && existing.stateEnum.active) return
-        dao.upsert(
-            Transcript(
-                recordingId = recordingId,
-                queuedAt = clock(),
-                correct = correct ?: settings.config.value.canCorrect,
-            )
-        )
+        dao.upsert(Transcript(recordingId = recordingId, queuedAt = clock(), correct = false))
         kick()
     }
 
-    /** 받아 적은 원문은 두고 교정만 다시. */
-    suspend fun recorrect(recordingId: Long) {
-        val t = dao.get(recordingId) ?: return
-        if (t.stateEnum.active || t.segments.isBlank()) return
-        dao.upsert(
-            t.copy(
-                state = TranscriptState.CORRECTING.name,
-                queuedAt = clock(),
-                correct = true,
-                sectionsDone = 0,
-                sectionsTotal = TranscriptCorrector.sections(TranscriptJson.segments(t.segments)).size,
-                paragraphs = "",
-                error = "",
-                attempts = 0,
-                waitUntil = 0,
-            )
-        )
-        kick()
+    /** 대기 중이거나 진행 중인 작업을 멈추고 지운다. 끝난 결과도 이것으로 지운다(텍스트 파일까지). */
+    suspend fun remove(recordingId: Long) {
+        dao.delete(recordingId)
+        recordings.getById(recordingId)?.let { runCatching { files.delete(it) } }
     }
 
-    /** 대기 중이거나 진행 중인 작업을 멈추고 지운다. 끝난 결과도 이것으로 지운다. */
-    suspend fun remove(recordingId: Long) = dao.delete(recordingId)
+    /** 이 기능이 생기기 전에 끝난 변환도 텍스트 파일로 남긴다(한 번만). */
+    suspend fun backfillFiles() {
+        for (t in dao.done()) {
+            val rec = recordings.getById(t.recordingId) ?: continue
+            runCatching { if (files.find(rec) == null) files.write(rec, TranscriptJson.paragraphs(t.paragraphs)) }
+        }
+    }
 
     /** 실패한 작업을 이어서(끝낸 조각은 그대로). */
     suspend fun retry(recordingId: Long) {
@@ -77,7 +65,7 @@ class TranscriptionQueue(
         val resume = when {
             t.plan.isBlank() -> TranscriptState.QUEUED
             t.chunksDone < TranscriptJson.plan(t.plan).size -> TranscriptState.TRANSCRIBING
-            else -> TranscriptState.TRANSCRIBING // 받아 적기를 마쳤으면 엔진이 교정으로 넘긴다
+            else -> TranscriptState.TRANSCRIBING // 받아 적기를 마쳤으면 엔진이 바로 문단으로 묶어 끝낸다
         }
         dao.upsert(t.copy(state = resume.name, error = "", attempts = 0, waitUntil = 0, queuedAt = clock()))
         kick()

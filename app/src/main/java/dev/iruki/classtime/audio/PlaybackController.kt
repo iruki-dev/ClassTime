@@ -3,6 +3,7 @@ package dev.iruki.classtime.audio
 import android.content.Context
 import android.media.MediaPlayer
 import android.net.Uri
+import android.os.SystemClock
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dev.iruki.classtime.data.ClassTimeRepository
 import dev.iruki.classtime.data.Recording
@@ -14,7 +15,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -40,10 +44,23 @@ data class PlaybackState(
 class PlaybackController @Inject constructor(
     @ApplicationContext private val app: Context,
     private val repo: ClassTimeRepository,
+    private val storage: RecordingStorage,
     @ApplicationScope private val scope: CoroutineScope,
 ) {
+    /** 재생하지 못했을 때 화면에 알릴 이유. 조용히 실패하면 사용자는 왜 안 되는지 모른다. */
+    enum class Problem { NO_ACCESS, UNREADABLE }
+
+    private val _problems = MutableSharedFlow<Problem>(extraBufferCapacity = 1)
+    val problems: SharedFlow<Problem> = _problems.asSharedFlow()
+
+    private suspend fun report(recording: Recording) {
+        val access = withContext(Dispatchers.IO) { storage.access(Uri.parse(recording.uri)) }
+        _problems.tryEmit(if (access == RecordingStorage.Access.PERMISSION) Problem.NO_ACCESS else Problem.UNREADABLE)
+    }
+
     private var player: MediaPlayer? = null
     private var ticker: Job? = null
+    private val seek = SeekSettle()
 
     private val _state = MutableStateFlow(PlaybackState())
     val state = _state.asStateFlow()
@@ -71,7 +88,7 @@ class PlaybackController @Inject constructor(
                 if (tryPlay(ready)) return@withContext
                 // 그래도 실패하면 한 번 더 강제 확정 후 재시도
                 val fixed = withContext(Dispatchers.IO) { repo.forceFinalize(ready) }
-                tryPlay(fixed)
+                if (!tryPlay(fixed)) report(fixed)
             }
         }
     }
@@ -84,7 +101,7 @@ class PlaybackController @Inject constructor(
         if (_state.value.recordingId == recording.id) return
         scope.launch {
             val ready = if (recording.ongoing || recording.sizeBytes == 0L) repo.forceFinalize(recording) else recording
-            withContext(Dispatchers.Main) { tryPlay(ready, start = false) }
+            withContext(Dispatchers.Main) { if (!tryPlay(ready, start = false)) report(ready) }
         }
     }
 
@@ -95,6 +112,7 @@ class PlaybackController @Inject constructor(
             val p = MediaPlayer().apply {
                 setDataSource(app, Uri.parse(recording.uri))
                 setOnCompletionListener { onCompleted() }
+                setOnSeekCompleteListener { seek.completed() }
                 prepare()
                 if (start) start()
             }
@@ -112,6 +130,7 @@ class PlaybackController @Inject constructor(
 
     /** 끝까지 들으면 미니 플레이어는 남기고 처음으로 되감는다. 다시 누르면 처음부터. */
     private fun onCompleted() {
+        seek.clear()
         runCatching { player?.seekTo(0) }
         _state.value = _state.value.copy(playing = false, positionMs = 0)
     }
@@ -121,7 +140,8 @@ class PlaybackController @Inject constructor(
         ticker = scope.launch(Dispatchers.Main) {
             while (isActive && _state.value.playing) {
                 val p = player ?: break
-                _state.value = _state.value.copy(positionMs = runCatching { p.currentPosition }.getOrDefault(0))
+                val raw = runCatching { p.currentPosition }.getOrDefault(0)
+                _state.value = _state.value.copy(positionMs = seek.report(raw, SystemClock.elapsedRealtime()))
                 delay(TICK_MS)
             }
         }
@@ -129,6 +149,7 @@ class PlaybackController @Inject constructor(
 
     fun seekTo(ms: Int) {
         val p = player ?: return
+        seek.begin(ms, SystemClock.elapsedRealtime())
         runCatching { p.seekTo(ms) }
         _state.value = _state.value.copy(positionMs = ms)
     }
@@ -167,6 +188,7 @@ class PlaybackController @Inject constructor(
 
     private fun release() {
         ticker?.cancel()
+        seek.clear()
         player?.let { runCatching { it.release() } }
         player = null
     }
@@ -174,5 +196,38 @@ class PlaybackController @Inject constructor(
     private companion object {
         const val TAG = "PlaybackController"
         const val TICK_MS = 250L
+    }
+}
+
+/**
+ * 이동(seek) 직후의 재생 위치를 고르게 한다. 순수 계산.
+ *
+ * MediaPlayer.seekTo 는 비동기라, 끝나기 전에는 예전 위치를, 끝난 뒤에도 잠깐은 요청보다 조금 앞
+ * (앞쪽 프레임 경계)을 돌려준다. 그 값을 그대로 쓰면 문장 시작으로 이동했을 때 강조가
+ * ‘누른 문장 → 바로 윗 문장 → 누른 문장’으로 튄다. 그래서 이동이 끝나고 재생 위치가 목표에
+ * 닿을 때까지는 목표를 보고한다. 기기가 완료 알림을 주지 않을 때를 위해 [timeoutMs] 뒤에는 그대로 쓴다.
+ */
+internal class SeekSettle(private val timeoutMs: Long = 1_000L) {
+    private var target = -1
+    private var startedAt = 0L
+    private var done = false
+
+    fun begin(targetMs: Int, now: Long) {
+        target = targetMs
+        startedAt = now
+        done = false
+    }
+
+    fun completed() { done = true }
+
+    fun clear() { target = -1 }
+
+    fun report(raw: Int, now: Long): Int {
+        if (target < 0) return raw
+        if ((done && raw >= target) || now - startedAt > timeoutMs) {
+            target = -1
+            return raw
+        }
+        return target
     }
 }

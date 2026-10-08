@@ -48,4 +48,20 @@ class RescanPlanTest {
         )
         assertThat(plan.missingCandidates.map { it.fileName }).containsExactly("gone.m4a")
     }
+
+    @Test
+    fun zeroSizedRows_areRepairedFromTheFolder() {
+        // 읽지 못해 0 B 로 덮였던 행: 폴더에서 읽은 크기·길이로 되살린다. 멀쩡한 행은 건드리지 않는다.
+        val broken = row("content://m/1", "a.m4a").copy(sizeBytes = 0, durationMs = 0)
+        val fine = row("content://m/2", "b.m4a").copy(sizeBytes = 10, durationMs = 20)
+        val plan = RescanPlan.of(
+            existing = listOf(broken, fine),
+            found = listOf(found("content://m/1", "a.m4a", size = 51_000_000, ms = 4_492_000), found("content://m/2", "b.m4a")),
+            courseIdOf = { null },
+        )
+        assertThat(plan.toRepair).hasSize(1)
+        assertThat(plan.toRepair.single().sizeBytes).isEqualTo(51_000_000)
+        assertThat(plan.toRepair.single().durationMs).isEqualTo(4_492_000)
+        assertThat(plan.toAdd).isEmpty()
+    }
 }

@@ -1,6 +1,15 @@
 package dev.iruki.classtime.ui
 
 import androidx.annotation.StringRes
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
+import androidx.compose.ui.platform.LocalContext
+import dev.iruki.classtime.audio.PlaybackController
+import dev.iruki.classtime.util.AppPermissions
+import dev.iruki.classtime.util.SystemScreens
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.padding
@@ -23,6 +32,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -45,6 +55,8 @@ import dev.iruki.classtime.ui.player.PlayerSheet
 import dev.iruki.classtime.ui.player.PlayerTab
 import dev.iruki.classtime.ui.player.PlayerText
 import dev.iruki.classtime.ui.ai.AiLabsScreen
+import dev.iruki.classtime.ui.ai.ReconvertDialog
+import dev.iruki.classtime.ui.share.ExportDialog
 import dev.iruki.classtime.ui.player.PlayerViewModel
 import dev.iruki.classtime.ui.recordings.RecordingsScreen
 import dev.iruki.classtime.ui.settings.SettingsScreen
@@ -93,8 +105,32 @@ fun ClassTimeNavHost(
     val ai by playerVm.ai.collectAsStateWithLifecycle()
     val transcript by playerVm.transcript.collectAsStateWithLifecycle()
     var playerOpen by remember { mutableStateOf(false) }
-    var playerTab by remember { mutableStateOf(PlayerTab.AUDIO) }
+    var exportingNow by remember { mutableStateOf(false) }
+    var reconvertingNow by remember { mutableStateOf(false) }
+    // 플레이어에서 마지막으로 본 탭. 다시 열면 그 탭으로 열린다.
+    var playerTab by rememberSaveable { mutableStateOf(PlayerTab.AUDIO) }
     val nowPlaying = playback.recording
+
+    // 재생하지 못하면 이유를 알린다. 권한 문제(들여온 파일)면 바로 허용할 수 있게.
+    val snackbar = remember { SnackbarHostState() }
+    val context = LocalContext.current
+    val noAccessText = stringResource(R.string.player_no_access)
+    val unreadableText = stringResource(R.string.player_unreadable)
+    val allowText = stringResource(R.string.ai_action_allow_access)
+    val access = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (!granted) SystemScreens.openAppDetails(context)
+    }
+    LaunchedEffect(playerVm) {
+        playerVm.problems.collect { problem ->
+            val noAccess = problem == PlaybackController.Problem.NO_ACCESS
+            val result = snackbar.showSnackbar(
+                message = if (noAccess) noAccessText else unreadableText,
+                actionLabel = if (noAccess) allowText else null,
+                withDismissAction = !noAccess,
+            )
+            if (result == SnackbarResult.ActionPerformed) access.launch(AppPermissions.audioReadPermission())
+        }
+    }
 
     // 텍스트를 열어야 할 때(변환 알림, 목록의 ‘텍스트 보기’): 녹음을 올리고 텍스트 탭으로.
     val openText: (Long) -> Unit = { id ->
@@ -115,6 +151,7 @@ fun ClassTimeNavHost(
     Scaffold(
         containerColor = AppTheme.colors.page,
         contentWindowInsets = WindowInsets(0),
+        snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
             Column {
                 if (onTab && nowPlaying != null) {
@@ -173,7 +210,7 @@ fun ClassTimeNavHost(
             }
             composable(Dest.Recordings.route) {
                 RecordingsScreen(
-                    onOpenPlayer = { playerTab = PlayerTab.AUDIO; playerOpen = true },
+                    onOpenPlayer = { playerOpen = true },
                     onOpenText = openText,
                 )
             }
@@ -209,6 +246,19 @@ fun ClassTimeNavHost(
         }
     }
 
+    if (exportingNow && nowPlaying != null) {
+        ExportDialog(
+            onDismiss = { exportingNow = false },
+            onSend = { audio, text -> playerVm.export(nowPlaying, audio, text); exportingNow = false },
+        )
+    }
+    if (reconvertingNow && nowPlaying != null) {
+        ReconvertDialog(
+            onDismiss = { reconvertingNow = false },
+            onConfirm = { playerVm.reconvert(nowPlaying.id); reconvertingNow = false },
+        )
+    }
+
     if (playerOpen && nowPlaying != null) {
         PlayerSheet(
             recording = nowPlaying,
@@ -219,7 +269,7 @@ fun ClassTimeNavHost(
             onSeek = playerVm::seekTo,
             onSeekBy = playerVm::seekBy,
             onSpeed = playerVm::setSpeed,
-            onShare = { playerVm.share(nowPlaying) },
+            onShare = { if (transcript?.done == true) exportingNow = true else playerVm.export(nowPlaying) },
             onOpenFolder = playerVm::openFolder,
             onDelete = {
                 playerOpen = false
@@ -228,12 +278,12 @@ fun ClassTimeNavHost(
             text = PlayerText(
                 ai = ai,
                 view = transcript,
-                initialTab = playerTab,
+                tab = playerTab,
+                onTab = { playerTab = it },
                 onConvert = { playerVm.convert(nowPlaying.id) },
                 onCancel = { playerVm.cancelText(nowPlaying.id) },
                 onRetry = { playerVm.retryText(nowPlaying.id) },
-                onRecorrect = { playerVm.recorrect(nowPlaying.id) },
-                onReconvert = { playerVm.reconvert(nowPlaying.id) },
+                onReconvert = { reconvertingNow = true },
                 onDeleteText = { playerVm.deleteText(nowPlaying.id) },
                 onCopy = { playerVm.copyText(nowPlaying, it) },
                 onShare = { playerVm.shareText(nowPlaying, it) },

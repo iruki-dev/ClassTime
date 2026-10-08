@@ -9,11 +9,14 @@ import dev.iruki.classtime.audio.RecordingScanner
  *   (재설치 뒤에는 같은 파일도 uri 가 달라질 수 있다).
  * - **삭제 후보**: 목록에는 있는데 폴더에서 못 찾은 것. 곧바로 지우지 않는다 — 권한이 없어
  *   안 보였을 수도 있으므로, 호출하는 쪽이 파일이 정말 없는지 하나씩 확인한 뒤에 지운다.
+ * - **고침**: 목록에 있지만 크기·길이가 0 으로 남은 행(읽지 못해 0 B 로 보이던 것)을 폴더에서
+ *   읽은 값으로 채운다.
  * - 녹음 중인 행은 어느 쪽에도 넣지 않는다.
  */
 data class RescanPlan(
     val toAdd: List<Recording>,
     val missingCandidates: List<Recording>,
+    val toRepair: List<Recording> = emptyList(),
 ) {
     companion object {
         fun of(
@@ -44,7 +47,18 @@ data class RescanPlan(
             val missing = existing.filter {
                 !it.ongoing && it.uri !in foundUris && key(it.relativePath, it.fileName) !in foundPaths
             }
-            return RescanPlan(add, missing)
+            val byUri = found.associateBy { it.uri }
+            val byPath = found.associateBy { key(it.relativePath, it.fileName) }
+            val repair = existing.mapNotNull { row ->
+                if (row.ongoing || (row.sizeBytes > 0 && row.durationMs > 0)) return@mapNotNull null
+                val f = byUri[row.uri] ?: byPath[key(row.relativePath, row.fileName)] ?: return@mapNotNull null
+                val fixed = row.copy(
+                    sizeBytes = row.sizeBytes.takeIf { it > 0 } ?: f.sizeBytes,
+                    durationMs = row.durationMs.takeIf { it > 0 } ?: f.durationMs,
+                )
+                fixed.takeIf { it != row }
+            }
+            return RescanPlan(add, missing, repair)
         }
 
         private fun key(relativePath: String, fileName: String) = relativePath.trimEnd('/') + "/" + fileName
