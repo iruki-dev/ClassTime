@@ -54,6 +54,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import dev.iruki.classtime.ui.ai.SummaryView
+import dev.iruki.classtime.ui.ai.SummaryPane
+import androidx.compose.material.icons.rounded.Summarize
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Forward10
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
@@ -133,14 +136,19 @@ fun PlayerSheet(
 
     // 실험적 기능이 켜져 있거나 이미 텍스트가 있으면 ‘오디오 | 텍스트’ 탭을 보인다.
     val view = text.view
-    val showTabs = text.ai.enabled || view != null
+    val summary = text.summary
+    val summaryTab = text.ai.summaryEnabled || summary?.summary != null
+    val tabs = listOfNotNull(PlayerTab.AUDIO, PlayerTab.TEXT, PlayerTab.SUMMARY.takeIf { summaryTab })
+    val showTabs = text.ai.enabled || view != null || summaryTab
     // 보던 탭은 앱 전체에서 기억한다(닫았다 열어도, 다른 녹음을 열어도 그대로).
-    val tab = if (showTabs) text.tab else PlayerTab.AUDIO
+    val tab = if (showTabs && text.tab in tabs) text.tab else PlayerTab.AUDIO
     var searching by rememberSaveable(recording.id) { mutableStateOf(false) }
     var query by rememberSaveable(recording.id) { mutableStateOf("") }
     var hitIndex by rememberSaveable(recording.id) { mutableIntStateOf(0) }
     val onText = showTabs && tab == PlayerTab.TEXT
+    val onSummary = showTabs && tab == PlayerTab.SUMMARY
     val reading = view?.done == true
+    val summaryDone = summary?.done == true
     val shown = view?.paragraphs.orEmpty()
     val hits = remember(shown, query) { findHits(shown, query) }
     val copiedMessage = stringResource(R.string.ai_copied)
@@ -180,7 +188,7 @@ fun PlayerSheet(
         Column(
             (if (showTabs) Modifier.fillMaxHeight() else Modifier)
                 .navigationBarsPadding()
-                .padding(bottom = if (onText) 0.dp else 16.dp),
+                .padding(bottom = if (onText || onSummary) 0.dp else 16.dp),
         ) {
             if (onText && searching) {
                 SearchBar(
@@ -213,7 +221,27 @@ fun PlayerSheet(
                         Icon(Icons.Rounded.MoreVert, contentDescription = stringResource(R.string.action_more))
                     }
                     DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                        if (reading) {
+                        if (onSummary && summaryDone) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.summary_menu_copy)) },
+                                onClick = {
+                                    menuOpen = false
+                                    text.onCopySummary()
+                                    Toast.makeText(context, copiedMessage, Toast.LENGTH_SHORT).show()
+                                },
+                            )
+                            if (text.ai.summaryEnabled) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.summary_menu_redo)) },
+                                    onClick = { menuOpen = false; text.onSummarize() },
+                                )
+                            }
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.summary_menu_delete)) },
+                                onClick = { menuOpen = false; text.onDeleteSummary() },
+                            )
+                            HorizontalDivider()
+                        } else if (reading) {
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.ai_menu_copy)) },
                                 onClick = {
@@ -251,10 +279,34 @@ fun PlayerSheet(
             }
 
             if (showTabs) {
-                ViewTabs(tab, onPick = { text.onTab(it); if (it == PlayerTab.AUDIO) { searching = false; query = "" } })
+                ViewTabs(tabs, tab, onPick = { text.onTab(it); if (it != PlayerTab.TEXT) { searching = false; query = "" } })
             }
 
-            if (onText) {
+            if (onSummary && summary != null) {
+                SummaryPane(
+                    view = summary,
+                    enabled = text.ai.summaryEnabled,
+                    canConvert = text.ai.enabled,
+                    onSummarize = text.onSummarize,
+                    onConvertThenSummarize = text.onConvertThenSummarize,
+                    onSummarizeAfterText = text.onSummarizeAfterText,
+                    onCancel = text.onDeleteSummary,
+                    // 요약의 문장 → 그 자리의 대본과 녹음. 읽던 흐름을 끊지 않게 재생은 시작하지 않는다.
+                    onRef = { i -> summary.starts.getOrNull(i)?.let { onSeek(it.toInt()); text.onTab(PlayerTab.TEXT) } },
+                    onOpenLabs = text.onOpenLabs,
+                    modifier = Modifier.weight(1f),
+                )
+                TextDock(
+                    state = state,
+                    position = position,
+                    duration = duration,
+                    onDrag = { dragging = it },
+                    onDragEnd = { dragging?.let { onSeek(it.toInt()) }; dragging = null },
+                    onToggle = onToggle,
+                    onSeekBy = onSeekBy,
+                    onSpeed = onSpeed,
+                )
+            } else if (onText) {
                 TranscriptPane(
                     view = view,
                     canConvert = text.ai.enabled,
@@ -397,7 +449,7 @@ fun PlayerSheet(
 }
 
 /** 플레이어 보기. */
-enum class PlayerTab { AUDIO, TEXT }
+enum class PlayerTab { AUDIO, TEXT, SUMMARY }
 
 /** 텍스트 탭에 필요한 것들(실험적 기능). 기능을 쓰지 않으면 기본값 그대로. */
 data class PlayerText(
@@ -414,23 +466,36 @@ data class PlayerText(
     val onCopy: (List<Paragraph>) -> Unit = {},
     val onShare: (List<Paragraph>) -> Unit = {},
     val onOpenLabs: () -> Unit = {},
+    /** 요약 탭(실험적 기능). */
+    val summary: SummaryView? = null,
+    val onSummarize: () -> Unit = {},
+    val onConvertThenSummarize: () -> Unit = {},
+    val onSummarizeAfterText: () -> Unit = {},
+    val onDeleteSummary: () -> Unit = {},
+    val onCopySummary: () -> Unit = {},
 )
 
-/** ‘오디오 | 텍스트’ 연결 버튼(간격 2, 바깥 끝 원, 안쪽 8). */
+/** ‘오디오 | 텍스트 | 요약’ 연결 버튼(간격 2, 바깥 끝 원, 안쪽 8). */
 @Composable
-private fun ViewTabs(tab: PlayerTab, onPick: (PlayerTab) -> Unit) {
+private fun ViewTabs(tabs: List<PlayerTab>, tab: PlayerTab, onPick: (PlayerTab) -> Unit) {
     val c = MaterialTheme.colorScheme
     Row(
         Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, top = 4.dp, bottom = 8.dp).selectableGroup(),
         horizontalArrangement = Arrangement.spacedBy(2.dp),
     ) {
-        listOf(
-            Triple(PlayerTab.AUDIO, Icons.Rounded.GraphicEq, R.string.ai_tab_audio),
-            Triple(PlayerTab.TEXT, Icons.AutoMirrored.Rounded.Notes, R.string.ai_tab_text),
-        ).forEachIndexed { i, (t, icon, label) ->
+        tabs.map {
+            when (it) {
+                PlayerTab.AUDIO -> Triple(it, Icons.Rounded.GraphicEq, R.string.ai_tab_audio)
+                PlayerTab.TEXT -> Triple(it, Icons.AutoMirrored.Rounded.Notes, R.string.ai_tab_text)
+                PlayerTab.SUMMARY -> Triple(it, Icons.Rounded.Summarize, R.string.ai_tab_summary)
+            }
+        }.forEachIndexed { i, (t, icon, label) ->
             val on = t == tab
-            val shape = if (i == 0) RoundedCornerShape(topStart = 20.dp, bottomStart = 20.dp, topEnd = 8.dp, bottomEnd = 8.dp)
-            else RoundedCornerShape(topStart = 8.dp, bottomStart = 8.dp, topEnd = 20.dp, bottomEnd = 20.dp)
+            val shape = when (i) {
+                0 -> RoundedCornerShape(topStart = 20.dp, bottomStart = 20.dp, topEnd = 8.dp, bottomEnd = 8.dp)
+                tabs.lastIndex -> RoundedCornerShape(topStart = 8.dp, bottomStart = 8.dp, topEnd = 20.dp, bottomEnd = 20.dp)
+                else -> RoundedCornerShape(8.dp)
+            }
             Surface(
                 shape = shape,
                 color = if (on) c.secondaryContainer else Color.Transparent,

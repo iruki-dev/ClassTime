@@ -49,26 +49,17 @@ class TranscriptFilesTest {
         assertThat(intents.first().getStringExtra("samsung.myfiles.intent.extra.START_PATH")).endsWith("Music/ClassTime")
     }
 
-    private class FakeFiles : TextFiles {
-        val files = mutableMapOf<Long, String>()
-        override fun write(recording: Recording, paragraphs: List<Paragraph>) =
-            null.also { files[recording.id] = TranscriptText.format(recording, paragraphs) }
-        override fun find(recording: Recording) = if (recording.id in files) android.net.Uri.parse("content://t/${recording.id}") else null
-        override fun delete(recording: Recording) { files.remove(recording.id) }
-        override fun rename(recording: Recording, newFileName: String) = Unit
-    }
-
     @Test
     fun queue_backfillsOldResults_andDeletesFileWithTheText() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).allowMainThreadQueries().build()
         try {
-            val files = FakeFiles()
+            val files = FakeTextFiles()
             val secrets = object : Secrets {
                 override fun get(name: String): String? = null
                 override fun put(name: String, value: String?) = Unit
             }
-            val queue = TranscriptionQueue(context, db.transcriptDao(), AiSettings(context, secrets), db.recordingDao(), files)
+            val queue = TranscriptionQueue(context, db.transcriptDao(), AiSettings(context, secrets), db.recordingDao(), files, db.summaryDao())
             db.recordingDao().insert(rec)
             db.transcriptDao().upsert(
                 Transcript(
@@ -77,7 +68,7 @@ class TranscriptFilesTest {
                 )
             )
             queue.backfillFiles()
-            assertThat(files.files[1L]).contains("[00:00] 오늘은 힙.")
+            assertThat(files[1L]).contains("[00:00] 오늘은 힙.")
 
             queue.remove(1)
             assertThat(files.files).isEmpty()

@@ -86,7 +86,7 @@ Kotlin + Jetpack Compose + Room 으로 작성된 네이티브 안드로이드 �
 - 과목 폴더 전체를 한 번에 공유(드라이브·메일 등)할 수도 있습니다.
 
 ### AI 텍스트 변환 (실험적 기능)
-`설정 › 실험적 기능 › AI 텍스트 변환`에서 직접 발급한 **Groq API 키**(받아 적기, Whisper large-v3)를
+`설정 › 실험적 기능`에서 직접 발급한 **Groq API 키**(받아 적기, Whisper large-v3)를
 넣어야 켜집니다. 키는 Android Keystore 로 암호화해 이 기기에만 저장하고 백업에서 뺍니다.
 녹음은 변환할 때만 외부로 보냅니다. 받아 적은 글은 쉬는 자리에서 문단으로 나눕니다.
 
@@ -107,6 +107,48 @@ Kotlin + Jetpack Compose + Room 으로 작성된 네이티브 안드로이드 �
 - 끝난 텍스트도 녹음 `⋮ › 처음부터 다시 변환`으로 다시 만들 수 있습니다(새 결과가 나오면 파일을 덮어씀).
 - 폴더 검사로 들여온 파일도 변환됩니다. AAC 가 아니면(mp3·wav 등) 조각을 AAC 로 바꿔 보내고,
   읽을 권한이 없으면 그 이유와 ‘권한 허용’을 보여 줍니다.
+
+### 강의 요약 (실험적 기능)
+같은 화면에서 **Claude API 키**(Anthropic)를 넣으면, 텍스트로 변환한 강의를 요약합니다. 녹음 소리는 보내지 않고
+받아 적은 글만 보냅니다. 플레이어의 `요약` 탭에서 봅니다.
+
+- **원문 링크** — 요약의 모든 줄(공지·주제·요점·용어)에 원문 시각이 붙어 있고, 누르면 텍스트 탭의 그 문단과
+  녹음의 그 자리로 갑니다. 대본 전체를 다시 읽지 않고 요약만으로 강의를 파악하고, 필요한 곳만 원문을 봅니다.
+- **빠짐없이** — 개념·정의·공식·수치·예시·절차를 모두 담고, 시험·과제·일정·강조는 맨 위에 따로 모읍니다.
+  인사·출석·잡담·반복은 뺍니다. 음성 인식 오류는 맥락으로 바로잡되 지어내지 않습니다.
+- **토큰 절약** — 실시간일 필요가 없어 Message Batches 로 보냅니다(요금 50%). 대본은 `[문단 번호] 문장`
+  줄로만 보내고(시각은 앱이 번호로 찾음), 결과는 구조화 출력(JSON 스키마)으로 받아 다시 묻지 않습니다.
+  끝났는지는 1·2·5·10분, 그 뒤 15분 간격으로 확인합니다.
+- **모델** — 기본은 Claude Opus 5.5(강의 1시간에 약 $0.08), Sonnet 5.5(약 $0.04), Haiku 5.5(약 $0.002) 중
+  고를 수 있습니다. 쓴 토큰과 대략의 요금은 설정 화면의 ‘Claude 사용량’에 모읍니다.
+- 텍스트 변환이 끝나면 자동으로 요약할 수 있고(설정), 요약 파일도 `Documents/ClassTime/<과목>/<녹음 이름>_요약.txt`
+  로 남깁니다. 보내기에서 녹음·텍스트·요약 파일을 고를 수 있습니다.
+
+### 한꺼번에 변환·요약 (실험적 기능)
+`실험적 기능` 화면의 `전체 텍스트 변환·요약`은 텍스트가 없거나 변환에 실패한 녹음을 찾아 변환을 맡기고(무음·1분 미만·
+녹음 중 제외), 요약을 쓸 수 있으면 변환이 끝나는 대로 요약까지 이어서 합니다. 텍스트는 있는데 요약이 없는 녹음은
+바로 요약을 맡깁니다. Claude 사용량(이번 달 · 지금까지, 배치 요금 추정)도 이 화면에 있습니다.
+
+### Google Drive 동기화 (실험적 기능)
+같은 화면에서 Google Drive 를 연결하면 **녹음 파일은 빼고** 받아 적은 텍스트와 요약만 드라이브와 맞춥니다.
+
+    내 드라이브/ClassTime/<과목>/<녹음 이름>.txt
+    내 드라이브/ClassTime/<과목>/<녹음 이름>_요약.txt
+
+- 변환·요약이 끝나거나, 이름을 바꾸거나, 지울 때마다(그리고 앱을 열 때) 몰아서 한 번 맞춥니다. 내용이 같으면
+  올리지 않고, 앱에서 지운 글은 드라이브 휴지통으로 보냅니다(되살릴 수 있음). 연결을 끊어도 올린 파일은 남습니다.
+- 권한은 `drive.file` 하나 — 이 앱이 만든 파일만 보고 고칠 수 있습니다. 토큰은 저장하지 않고 매번 Google Play
+  서비스에서 받습니다.
+- **개발자가 처음 한 번 Google Cloud 를 설정해야 합니다** (앱 사용자는 할 일이 없습니다. Firebase 와 같은 프로젝트를 씁니다):
+  1. Google Cloud 콘솔 › API 및 서비스 › 라이브러리에서 **Google Drive API** 사용 설정.
+  2. Google 인증 플랫폼(OAuth 동의 화면): 앱 이름·지원 이메일을 넣고 대상은 **외부**. 데이터 액세스에
+     `…/auth/drive.file` 범위 추가. 이 범위는 민감하지 않은 범위라 **앱 게시(프로덕션)** 로 바꿔도 Google 심사가
+     필요 없습니다. ‘테스트’ 상태로 두면 테스트 사용자로 넣은 계정만 연결되고, 허락이 7일마다 끊깁니다.
+  3. 서명 인증서 SHA-1 등록. 디버그·배포가 같은 고정 키(`secrets/classtime-release.jks`)로 서명되므로 하나면
+     됩니다. Firebase 콘솔 › 프로젝트 설정 › 내 앱(Android `dev.iruki.classtime`) › **디지털 지문 추가**에 넣으면
+     Android OAuth 클라이언트가 자동으로 만들어집니다. (또는 Cloud 콘솔 › 사용자 인증 정보 › OAuth 클라이언트 ID ›
+     Android 로 직접 만들기.) SHA-1 은 `keytool -list -v -keystore secrets/classtime-release.jks` (비밀번호를 물으면 키스토어 비밀번호).
+  설정이 빠져 있으면 사용자에게는 ‘지금은 연결할 수 없어요’만 보이고, 원인(DEVELOPER_ERROR)은 logcat 의 `DriveAuth` 태그로 남습니다.
 
 ### PC 로 옮기기
 1. **USB (권장)** — 케이블 연결 → 파일 전송 모드 → `내장 저장소/Music/ClassTime/` 폴더를 통째로 복사.
@@ -183,7 +225,7 @@ app/src/main/java/dev/iruki/classtime/
 ├── audio/
 │   ├── AudioRecorder.kt         MediaRecorder 래퍼 + 진폭 표본화·무음 감지
 │   └── RecordingStorage.kt      MediaStore 로 Music/ClassTime/<과목> 에 저장
-├── ai/                          실험적 기능: AI 텍스트 변환
+├── ai/                          실험적 기능: AI 텍스트 변환 · 강의 요약
 │   ├── SpeechDetector.kt        소리 크기·목소리 주기성 재기, 말소리 구간 찾기 (순수 계산)
 │   ├── ChunkPlanner.kt          말소리 구간을 이어 붙여 조각으로, 말 끊긴 곳에서 자르기 (순수 계산)
 │   ├── AudioChunks.kt           디코딩해 재기 · 구간들을 이어 붙여 AAC 로 잘라 내기(AAC 는 재인코딩 없이)
@@ -192,7 +234,15 @@ app/src/main/java/dev/iruki/classtime/
 │   ├── GroqClient.kt            Whisper API 호출 (multipart)
 │   ├── TranscriptionEngine.kt   작업 한 걸음씩: 나누기 → 받아 적기 → 문단
 │   ├── TranscriptionQueue.kt / TranscriptionWorker.kt  WorkManager 대기열
-│   └── SecretStore.kt / AiSettings.kt  Keystore 암호화 키 · 설정 · 전송 기록
+│   ├── LectureSummary.kt        요약의 모양 · 프롬프트 · JSON 스키마 · 읽고 쓰기 (순수 계산)
+│   ├── ClaudeClient.kt          Claude API(공식 Java SDK) — 배치 보내기 · 확인 · 결과
+│   ├── SummaryQueue.kt          요약 대기열 · 처리기(배치 확인 예약) · 알림
+│   ├── BulkPlan.kt              전체 텍스트 변환·요약이 맡길 것 (순수 계산)
+│   └── SecretStore.kt / AiSettings.kt  Keystore 암호화 키 · 설정 · 전송 기록 · 요약 사용량
+├── sync/                        실험적 기능: Google Drive 동기화
+│   ├── DriveSync.kt             올릴 글 · 만들기/고치기/휴지통 계획 · 동기화 엔진 · 기록 (순수 계산 + 상태 파일)
+│   ├── DriveRest.kt             Drive REST v3 (폴더 · multipart 올리기 · 고치기 · 휴지통)
+│   └── DriveSyncWorker.kt       권한(drive.file) · 설정 · WorkManager 동기화
 ├── schedule/
 │   ├── ScheduleManager.kt       시간표+학기+예외 → 정확 알람. 재설정과 따라잡기를 분리
 │   ├── AlarmReceiver.kt         시작/종료 알람 수신 → 서비스 제어 + 다음 회차 재예약
@@ -300,6 +350,11 @@ app/src/main/java/dev/iruki/classtime/
 | `ChunkPlannerTest` | 말소리 구간 이어 붙이기, 숨 쉬는 자리에서 자르기, 조각 길이 한도, 조각 시각 → 녹음 시각 |
 | `QuotaLedgerTest` | Groq 분당 요청·시간당/하루 소리 한도, 최소 10초 청구 |
 | `WhisperFilterTest` | 말소리 근거 없는 끝인사·늘어진 문장 제거, 무너진 30초 창 찾기와 한도, 실제 인사 유지, 문단 나누기 |
+| `SummaryPromptTest` | 대본은 번호 줄만, 스키마는 모든 객체가 닫히고 필드 필수, 없는 문단 번호 버리기, 원문 시각 붙인 글, 배치 요금 |
+| `ClaudeClientTest` | 가짜 서버로 SDK 요청 모양(배치 하나, 구조화 출력, effort medium) · 상태 · 결과(성공·거절·잘림·잔액·만료) · 오류 분류 |
+| `SummaryEngineTest` | 기다리는 요약을 배치 하나로, 확인 간격, 결과 저장과 요약 파일, 거절·잘림·키 거부·서버 오류·연결 끊김, 자동 요약 조건, 취소, 변환을 기다리는 요약, 달별 사용량 |
+| `BulkPlanTest` | 텍스트·요약이 빠진 녹음 찾기, 진행 중·녹음 중·무음·1분 미만 제외 |
+| `DriveSyncTest` | 올릴 글(텍스트·요약만, 과목 폴더), 한 번만 만들기 · 바뀌면 고치기 · 지우면 휴지통, 폴더·파일이 드라이브에서 지워졌을 때 다시 올리기, REST 요청 모양과 오류 분류 |
 | `TranscriptFilesTest` | 텍스트 파일 위치·이름·내용, 예전 결과 채우기와 함께 지우기, 폴더 열기 인텐트에 권한 부여 플래그 없음 |
 | `TranscriptJsonTest` | 시각 표기, Groq 응답 해석, JSON 왕복(예전 조각 형식 포함), 재시도 헤더 |
 | `TranscriptionEngineTest` | 가짜 API 로 전체 흐름 — 나누기→받아 적기→문단, 한도 대기 후 재전송 없이 이어가기, 키 거부, 권한 없는 파일·코덱 오류는 이유와 함께 실패, 예전 ‘교정 중’ 작업 마무리, 놓친 창 다시 받아 적어 바꾸기, 취소 |

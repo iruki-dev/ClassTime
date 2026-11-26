@@ -7,8 +7,8 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [Course::class, Recording::class, Term::class, ScheduleException::class, Transcript::class],
-    version = 5,
+    entities = [Course::class, Recording::class, Term::class, ScheduleException::class, Transcript::class, Summary::class],
+    version = 6,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -18,6 +18,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun termDao(): TermDao
     abstract fun scheduleExceptionDao(): ScheduleExceptionDao
     abstract fun transcriptDao(): TranscriptDao
+    abstract fun summaryDao(): SummaryDao
 
     companion object {
         /** 인스턴스 생성은 Hilt(AppModule)가 맡는다. 여기에는 스키마 지식만 둔다. */
@@ -101,6 +102,23 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        val ALL_MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+        /** v5 -> v6: 강의 요약(실험적 기능). 기존 데이터는 건드리지 않는다. */
+        internal val MIGRATION_5_6_SQL: List<String> = listOf(
+            """CREATE TABLE IF NOT EXISTS `summaries` (
+                `recordingId` INTEGER NOT NULL, `state` TEXT NOT NULL, `model` TEXT NOT NULL,
+                `queuedAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, `transcriptAt` INTEGER NOT NULL,
+                `batchId` TEXT NOT NULL, `checkAt` INTEGER NOT NULL, `checks` INTEGER NOT NULL,
+                `content` TEXT NOT NULL, `inputTokens` INTEGER NOT NULL, `outputTokens` INTEGER NOT NULL,
+                `error` TEXT NOT NULL, PRIMARY KEY(`recordingId`)
+            )""",
+        )
+
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_5_6_SQL.forEach(db::execSQL)
+            }
+        }
+
+        val ALL_MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
     }
 }

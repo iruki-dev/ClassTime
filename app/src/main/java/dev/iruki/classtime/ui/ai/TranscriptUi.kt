@@ -1,5 +1,10 @@
 package dev.iruki.classtime.ui.ai
 
+import dev.iruki.classtime.data.SummaryState
+import dev.iruki.classtime.data.Summary
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.material.icons.rounded.Summarize
+import androidx.compose.foundation.background
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -166,9 +171,12 @@ fun TranscriptBadge(t: Transcript?) {
     if (t == null) return
     val c = MaterialTheme.colorScheme
     val state = t.stateEnum
+    if (state == TranscriptState.DONE) {
+        StatusIcon(Icons.AutoMirrored.Rounded.Notes, stringResource(R.string.ai_status_done))
+        return
+    }
     val label = stringResource(
         when (state) {
-            TranscriptState.DONE -> R.string.ai_status_done
             TranscriptState.FAILED -> R.string.ai_status_failed
             TranscriptState.QUEUED -> R.string.ai_status_queued
             else -> R.string.ai_status_working
@@ -193,9 +201,23 @@ fun TranscriptBadge(t: Transcript?) {
                 if (count.isNotEmpty()) Text(count, style = MaterialTheme.typography.bodyMedium, color = c.primary)
             }
             state == TranscriptState.QUEUED -> Icon(Icons.Rounded.Schedule, null, tint = c.onSurfaceVariant, modifier = Modifier.size(16.dp))
-            state == TranscriptState.DONE -> Icon(Icons.AutoMirrored.Rounded.Notes, null, tint = c.onSurfaceVariant, modifier = Modifier.size(16.dp))
             else -> Icon(Icons.Rounded.Error, null, tint = c.error, modifier = Modifier.size(16.dp))
         }
+    }
+}
+
+/** 녹음 줄의 ‘요약 있음’ 아이콘. 다 된 요약만 단다. */
+@Composable
+fun SummaryBadge(s: Summary?) {
+    if (s == null || s.stateEnum != SummaryState.DONE) return
+    StatusIcon(Icons.Rounded.Summarize, stringResource(R.string.badge_summary_cd))
+}
+
+/** 녹음 줄의 상태 아이콘(텍스트 있음·요약 있음). 줄 높이(20)에 맞춰 가운데. */
+@Composable
+private fun StatusIcon(icon: ImageVector, cd: String) {
+    Box(Modifier.height(20.dp).clearAndSetSemantics { contentDescription = cd }, contentAlignment = Alignment.Center) {
+        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
     }
 }
 

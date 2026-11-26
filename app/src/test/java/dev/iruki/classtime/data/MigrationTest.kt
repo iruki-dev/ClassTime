@@ -153,7 +153,7 @@ class MigrationTest {
     }
 
     @Test
-    fun migrate3to5_addsIconAndTranscripts() = runBlocking {
+    fun migrate3to6_addsIconTranscriptsAndSummaries() = runBlocking {
         createLegacyDatabase(3, v3Hash, v3Tables) { db ->
             db.execSQL(
                 "INSERT INTO courses (id, groupId, subject, professor, room, dayOfWeek, startMinute, endMinute, autoRecord, colorArgb) " +
@@ -176,6 +176,11 @@ class MigrationTest {
         transcripts.upsert(Transcript(recordingId = 77, queuedAt = 2))
         assertThat(transcripts.deleteOrphans()).isEqualTo(1)
         assertThat(transcripts.pending().map { it.recordingId }).containsExactly(9L)
+        // v6: 요약 표도 비어서 시작한다.
+        val summaries = db.summaryDao()
+        assertThat(summaries.pending()).isEmpty()
+        summaries.upsert(Summary(recordingId = 9, model = "claude-opus-5-5", queuedAt = 1))
+        assertThat(summaries.pending().single().recordingId).isEqualTo(9L)
         db.close()
     }
 

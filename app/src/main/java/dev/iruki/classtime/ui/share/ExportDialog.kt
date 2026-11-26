@@ -23,22 +23,28 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import dev.iruki.classtime.R
 
-/** 텍스트가 있는 녹음을 보낼 때: 녹음 파일·텍스트 파일 중 무엇을 보낼지. */
+/** 텍스트·요약이 있는 녹음을 보낼 때: 녹음 파일·텍스트 파일·요약 파일 중 무엇을 보낼지. */
 @Composable
-fun ExportDialog(onDismiss: () -> Unit, onSend: (audio: Boolean, text: Boolean) -> Unit) {
+fun ExportDialog(
+    available: RecordingExport.Available,
+    onDismiss: () -> Unit,
+    onSend: (audio: Boolean, text: Boolean, summary: Boolean) -> Unit,
+) {
     var audio by rememberSaveable { mutableStateOf(true) }
-    var text by rememberSaveable { mutableStateOf(true) }
+    var text by rememberSaveable { mutableStateOf(available.text) }
+    var summary by rememberSaveable { mutableStateOf(available.summary) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.export_title)) },
         text = {
             Column {
                 Choice(stringResource(R.string.export_audio), audio) { audio = it }
-                Choice(stringResource(R.string.export_text), text) { text = it }
+                if (available.text) Choice(stringResource(R.string.export_text), text) { text = it }
+                if (available.summary) Choice(stringResource(R.string.export_summary), summary) { summary = it }
             }
         },
         confirmButton = {
-            TextButton(onClick = { onSend(audio, text) }, enabled = audio || text) {
+            TextButton(onClick = { onSend(audio, text && available.text, summary && available.summary) }, enabled = audio || text || summary) {
                 Text(stringResource(R.string.export_send))
             }
         },

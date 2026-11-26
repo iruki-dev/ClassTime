@@ -22,6 +22,7 @@ import dev.iruki.classtime.data.Transcript
 import dev.iruki.classtime.data.TranscriptDao
 import dev.iruki.classtime.data.TranscriptError
 import dev.iruki.classtime.data.TranscriptState
+import dev.iruki.classtime.sync.DriveSyncWorker
 import dev.iruki.classtime.util.AppLog
 import kotlinx.coroutines.sync.withLock
 
@@ -33,6 +34,7 @@ interface TranscriptionEntryPoint {
     fun recordings(): RecordingDao
     fun queue(): TranscriptionQueue
     fun settings(): AiSettings
+    fun summaryQueue(): SummaryQueue
 }
 
 /**
@@ -84,6 +86,9 @@ class TranscriptionWorker(context: Context, params: WorkerParameters) : Coroutin
             if (t.stateEnum.active) continue
             val rec = deps.recordings().getById(id) ?: continue
             val ok = t.stateEnum == TranscriptState.DONE
+            // 자동 요약이 켜져 있으면 바로 맡긴다(실시간일 필요가 없어 배치로 간다).
+            runCatching { deps.summaryQueue().onTranscribed(id, ok) }
+            if (ok) DriveSyncWorker.kick(applicationContext)
             val text = when {
                 ok -> applicationContext.getString(R.string.ai_notif_done)
                 t.errorEnum == TranscriptError.GROQ_KEY -> applicationContext.getString(R.string.ai_notif_key)

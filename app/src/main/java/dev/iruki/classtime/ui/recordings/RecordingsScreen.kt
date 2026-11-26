@@ -1,8 +1,23 @@
 package dev.iruki.classtime.ui.recordings
 
 
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import dev.iruki.classtime.ui.ai.SummaryBadge
+import dev.iruki.classtime.data.SummaryState
+import dev.iruki.classtime.data.Summary
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.Color
 import android.text.format.DateFormat
 import androidx.compose.foundation.background
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -78,6 +93,7 @@ import dev.iruki.classtime.ui.common.LargeHeader
 import dev.iruki.classtime.ui.common.RowHeadline
 import dev.iruki.classtime.ui.common.ScreenPadding
 import dev.iruki.classtime.ui.share.ExportDialog
+import dev.iruki.classtime.ui.share.RecordingExport
 import dev.iruki.classtime.ui.theme.AppTheme
 import dev.iruki.classtime.ui.theme.CourseIcons
 import dev.iruki.classtime.util.SystemScreens
@@ -96,13 +112,16 @@ fun RecordingsScreen(onOpenPlayer: () -> Unit, onOpenText: (Long) -> Unit) {
     val filter by vm.filter.collectAsStateWithLifecycle()
     val icons by vm.subjectIcons.collectAsStateWithLifecycle()
     val transcripts by vm.transcripts.collectAsStateWithLifecycle()
+    val summaries by vm.summaries.collectAsStateWithLifecycle()
+    val shell = folderShell()
     val ai by vm.ai.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     var renaming by remember { mutableStateOf<Recording?>(null) }
     var deleting by remember { mutableStateOf<Recording?>(null) }
-    var exporting by remember { mutableStateOf<List<Recording>?>(null) }
+    var exporting by remember { mutableStateOf<Pair<List<Recording>, RecordingExport.Available>?>(null) }
     var reconverting by remember { mutableStateOf<Recording?>(null) }
+    val collapsed by vm.collapsed.collectAsStateWithLifecycle()
 
     val all = groups.flatMap { it.second }
     val visible = if (filter.isEmpty()) groups else groups.filter { it.first in filter }
@@ -152,44 +171,60 @@ fun RecordingsScreen(onOpenPlayer: () -> Unit, onOpenText: (Long) -> Unit) {
                     }
                 }
 
+                // 펼친 과목은 한 장의 바탕 위에 머리와 녹음을 올려 한 묶음으로 보이게 한다.
                 visible.forEach { (subject, recordings) ->
+                    val open = subject !in collapsed
+                    val bg = if (open) shell else Color.Transparent
                     item(key = "header_$subject") {
-                        GroupHeader(
-                            subject = subject,
-                            icon = icons[subject].orEmpty(),
-                            count = recordings.size,
-                            totalBytes = recordings.sumOf { it.sizeBytes },
-                            onShareAll = {
-                                if (recordings.any { transcripts[it.id]?.stateEnum == TranscriptState.DONE }) exporting = recordings
-                                else vm.export(recordings)
-                            },
-                        )
+                        Box(
+                            Modifier
+                                .padding(start = ScreenPadding, end = ScreenPadding, top = 8.dp)
+                                .background(bg, if (open) RoundedCornerShape(24.dp, 24.dp, 0.dp, 0.dp) else RoundedCornerShape(24.dp))
+                                .padding(start = 4.dp, end = 4.dp, top = if (open) 4.dp else 0.dp),
+                        ) {
+                            GroupHeader(
+                                subject = subject,
+                                icon = icons[subject].orEmpty(),
+                                count = recordings.size,
+                                totalBytes = recordings.sumOf { it.sizeBytes },
+                                summarized = recordings.count { summaries[it.id]?.stateEnum == SummaryState.DONE },
+                                open = open,
+                                onToggle = { vm.toggleFolder(subject) },
+                                onShareAll = { vm.share(recordings) { exporting = recordings to it } },
+                            )
+                        }
                     }
-                    itemsIndexed(recordings, key = { _, r -> r.id }) { i, recording ->
-                        RecordingRow(
-                            recording = recording,
-                            index = i,
-                            count = recordings.size,
-                            liveNow = recording.ongoing && recordingActive,
-                            isCurrent = playback.recordingId == recording.id,
-                            playing = playback.recordingId == recording.id && playback.playing,
-                            onToggle = { vm.toggle(recording) },
-                            onOpenPlayer = {
-                                if (playback.recordingId != recording.id) vm.toggle(recording)
-                                onOpenPlayer()
-                            },
-                            onShare = {
-                                if (transcripts[recording.id]?.stateEnum == TranscriptState.DONE) exporting = listOf(recording)
-                                else vm.export(listOf(recording))
-                            },
-                            onRename = { renaming = recording },
-                            onDelete = { deleting = recording },
-                            transcript = transcripts[recording.id],
-                            canConvert = ai.enabled && !recording.isSilent,
-                            onConvert = { vm.convert(recording) },
-                            onReconvert = { reconverting = recording },
-                            onOpenText = { onOpenText(recording.id) },
-                        )
+                    if (open) itemsIndexed(recordings, key = { _, r -> r.id }) { i, recording ->
+                        val last = i == recordings.lastIndex
+                        Box(
+                            Modifier
+                                .padding(horizontal = ScreenPadding)
+                                .background(bg, if (last) RoundedCornerShape(0.dp, 0.dp, 24.dp, 24.dp) else RectangleShape)
+                                .padding(start = 4.dp, end = 4.dp, top = GroupGap / 2, bottom = GroupGap / 2 + if (last) 4.dp else 0.dp),
+                        ) {
+                            RecordingRow(
+                                recording = recording,
+                                index = i,
+                                count = recordings.size,
+                                liveNow = recording.ongoing && recordingActive,
+                                isCurrent = playback.recordingId == recording.id,
+                                playing = playback.recordingId == recording.id && playback.playing,
+                                onToggle = { vm.toggle(recording) },
+                                onOpenPlayer = {
+                                    if (playback.recordingId != recording.id) vm.toggle(recording)
+                                    onOpenPlayer()
+                                },
+                                onShare = { vm.share(listOf(recording)) { exporting = listOf(recording) to it } },
+                                onRename = { renaming = recording },
+                                onDelete = { deleting = recording },
+                                transcript = transcripts[recording.id],
+                                summary = summaries[recording.id],
+                                canConvert = ai.enabled && !recording.isSilent,
+                                onConvert = { vm.convert(recording) },
+                                onReconvert = { reconverting = recording },
+                                onOpenText = { onOpenText(recording.id) },
+                            )
+                        }
                     }
                 }
             }
@@ -220,10 +255,11 @@ fun RecordingsScreen(onOpenPlayer: () -> Unit, onOpenText: (Long) -> Unit) {
         )
     }
 
-    exporting?.let { list ->
+    exporting?.let { (list, available) ->
         ExportDialog(
+            available = available,
             onDismiss = { exporting = null },
-            onSend = { audio, text -> vm.export(list, audio, text); exporting = null },
+            onSend = { audio, text, summary -> vm.export(list, audio, text, summary); exporting = null },
         )
     }
 
@@ -282,24 +318,57 @@ private fun SubjectChip(label: String, selected: Boolean, onClick: () -> Unit) {
     )
 }
 
+/** 펼친 과목 묶음의 바탕. 페이지보다 한 단 짙고, 흰 줄보다 옅다. */
 @Composable
-private fun GroupHeader(subject: String, icon: String, count: Int, totalBytes: Long, onShareAll: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().padding(start = ScreenPadding + 4.dp, end = 4.dp, top = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        CourseIconTile(CourseIcons.of(icon, subject), size = 32.dp)
-        Column(Modifier.weight(1f)) {
-            Text(subject, style = MaterialTheme.typography.titleMedium)
-            Text(
-                stringResource(R.string.recordings_group_summary, count, TimeUtils.formatSize(totalBytes)),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+private fun folderShell(): Color =
+    if (AppTheme.colors.isDark) MaterialTheme.colorScheme.surfaceContainerLow
+    else MaterialTheme.colorScheme.surfaceContainerHigh
+
+@Composable
+private fun GroupHeader(
+    subject: String,
+    icon: String,
+    count: Int,
+    totalBytes: Long,
+    summarized: Int,
+    open: Boolean,
+    onToggle: () -> Unit,
+    onShareAll: () -> Unit,
+) {
+    // 머리를 누르면 그 과목 폴더를 접거나 편다. 화살표는 이름 바로 옆, 보내기는 맨 끝.
+    val c = MaterialTheme.colorScheme
+    val rotation by animateFloatAsState(if (open) 0f else -90f, label = "folder")
+    val stateText = stringResource(if (open) R.string.recordings_folder_open else R.string.recordings_folder_closed)
+    val size = TimeUtils.formatSize(totalBytes)
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            Modifier
+                .weight(1f)
+                .heightIn(min = 56.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .clickable(onClickLabel = stringResource(if (open) R.string.recordings_folder_collapse else R.string.recordings_folder_expand), onClick = onToggle)
+                .semantics { stateDescription = stateText }
+                .padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            CourseIconTile(
+                CourseIcons.of(icon, subject), size = 32.dp,
+                container = if (open) AppTheme.colors.group else MaterialTheme.colorScheme.surfaceContainerHigh,
             )
+            Column(Modifier.weight(1f)) {
+                Text(subject, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold))
+                Text(
+                    if (summarized > 0) stringResource(R.string.recordings_group_summaries, count, size, summarized)
+                    else stringResource(R.string.recordings_group_summary, count, size),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = c.onSurfaceVariant,
+                )
+            }
+            Icon(Icons.Rounded.ExpandMore, contentDescription = null, tint = c.onSurfaceVariant, modifier = Modifier.rotate(rotation))
         }
         IconButton(onClick = onShareAll) {
-            Icon(Icons.Rounded.Share, contentDescription = stringResource(R.string.recordings_cd_share_group, subject))
+            Icon(Icons.Rounded.Share, contentDescription = stringResource(R.string.recordings_cd_share_group, subject), tint = c.onSurfaceVariant)
         }
     }
 }
@@ -317,6 +386,7 @@ private fun clock(epochMs: Long): String {
     return TimeUtils.minuteToText(t.hour * 60 + t.minute)
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun RecordingRow(
     recording: Recording,
@@ -331,6 +401,7 @@ private fun RecordingRow(
     onRename: () -> Unit,
     onDelete: () -> Unit,
     transcript: Transcript?,
+    summary: Summary?,
     canConvert: Boolean,
     onConvert: () -> Unit,
     onReconvert: () -> Unit,
@@ -355,7 +426,6 @@ private fun RecordingRow(
         index = index,
         count = count,
         selected = isCurrent,
-        modifier = Modifier.padding(horizontal = ScreenPadding, vertical = GroupGap / 2),
         onClick = if (liveNow) null else onOpenPlayer,
         leading = {
             val label = stringResource(if (playing) R.string.recordings_cd_pause else R.string.recordings_cd_play)
@@ -380,9 +450,14 @@ private fun RecordingRow(
                     Text(stringResource(R.string.recordings_silent_warning), style = MaterialTheme.typography.bodyMedium, color = c.error)
                 }
             }
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            // 공간이 모자라면 배지는 다음 줄로 내려간다(정보는 자르지 않는다).
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
                 Text(meta, style = MaterialTheme.typography.bodyMedium, color = c.onSurfaceVariant)
                 TranscriptBadge(transcript)
+                SummaryBadge(summary)
             }
         },
         trailing = {

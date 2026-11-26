@@ -18,6 +18,7 @@ import dev.iruki.classtime.data.ClassTimeRepository
 import dev.iruki.classtime.schedule.ScheduleManager
 import dev.iruki.classtime.service.RecordingService
 import dev.iruki.classtime.ui.ClassTimeNavHost
+import dev.iruki.classtime.ai.SummaryWorker
 import dev.iruki.classtime.ai.TranscriptionWorker
 import dev.iruki.classtime.ui.theme.ClassTimeTheme
 import dev.iruki.classtime.util.AppLog
@@ -48,6 +49,7 @@ class MainActivity : ComponentActivity() {
 
     /** 텍스트 변환 알림을 눌러 들어왔을 때 열 녹음. 한 번 열면 비운다. */
     private var openTranscript by mutableStateOf<Long?>(null)
+    private var openSummary by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -71,7 +73,8 @@ class MainActivity : ComponentActivity() {
                     setupIssues = setupIssues,
                     onResolveIssue = ::resolve,
                     openTranscript = openTranscript,
-                    onTranscriptOpened = { openTranscript = null },
+                    openSummary = openSummary,
+                    onTranscriptOpened = { openTranscript = null; openSummary = false },
                 )
             }
         }
@@ -84,7 +87,10 @@ class MainActivity : ComponentActivity() {
 
     private fun readTranscriptExtra(intent: Intent?) {
         val id = intent?.getLongExtra(TranscriptionWorker.EXTRA_RECORDING_ID, -1L) ?: -1L
-        if (id > 0) openTranscript = id
+        if (id > 0) {
+            openSummary = intent?.getBooleanExtra(SummaryWorker.EXTRA_OPEN_SUMMARY, false) == true
+            openTranscript = id
+        }
     }
 
     override fun onResume() {

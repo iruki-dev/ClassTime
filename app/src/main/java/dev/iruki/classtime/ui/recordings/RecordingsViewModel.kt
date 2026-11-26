@@ -16,6 +16,7 @@ import dev.iruki.classtime.ai.AiConfig
 import dev.iruki.classtime.ai.AiSettings
 import dev.iruki.classtime.ai.TextFiles
 import dev.iruki.classtime.ai.TranscriptionQueue
+import dev.iruki.classtime.sync.DriveSyncWorker
 import dev.iruki.classtime.ui.share.RecordingExport
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
@@ -26,6 +27,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import dev.iruki.classtime.ai.SummaryQueue
+import dev.iruki.classtime.data.Summary
 
 @HiltViewModel
 class RecordingsViewModel @Inject constructor(
@@ -34,6 +37,7 @@ class RecordingsViewModel @Inject constructor(
     private val storage: RecordingStorage,
     private val player: PlaybackController,
     private val transcription: TranscriptionQueue,
+    summaryQueue: SummaryQueue,
     private val textFiles: TextFiles,
     private val export: RecordingExport,
     aiSettings: AiSettings,
@@ -41,6 +45,11 @@ class RecordingsViewModel @Inject constructor(
 
     /** 실험적 기능: 녹음 id → 텍스트 변환 상태. 기능을 쓰지 않으면 비어 있다. */
     val transcripts: StateFlow<Map<Long, Transcript>> = transcription.observeAll()
+        .map { list -> list.associateBy { it.recordingId } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
+
+    /** 실험적 기능: 녹음 id → 요약 상태. */
+    val summaries: StateFlow<Map<Long, Summary>> = summaryQueue.observeAll()
         .map { list -> list.associateBy { it.recordingId } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
@@ -64,6 +73,17 @@ class RecordingsViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
     /** 과목 칩으로 거르기. 여러 개를 고를 수 있고, 비어 있으면 전체. */
+    /** 접어 둔 과목 폴더. 앱을 다시 열어도 그대로. */
+    private val folderPrefs = app.getSharedPreferences("recordings_ui", Context.MODE_PRIVATE)
+    private val _collapsed = MutableStateFlow(folderPrefs.getStringSet(KEY_COLLAPSED, emptySet()).orEmpty().toSet())
+    val collapsed = _collapsed.asStateFlow()
+
+    fun toggleFolder(subject: String) {
+        val next = _collapsed.value.let { if (subject in it) it - subject else it + subject }
+        _collapsed.value = next
+        folderPrefs.edit().putStringSet(KEY_COLLAPSED, next).apply()
+    }
+
     private val _filter = MutableStateFlow<Set<String>>(emptySet())
     val filter = _filter.asStateFlow()
 
@@ -98,6 +118,7 @@ class RecordingsViewModel @Inject constructor(
         if (storage.rename(Uri.parse(recording.uri), newFileName)) {
             runCatching { textFiles.rename(recording, newFileName) }
             repo.updateRecording(recording.copy(fileName = newFileName))
+            DriveSyncWorker.kick(app)
         }
     }
 
@@ -105,7 +126,17 @@ class RecordingsViewModel @Inject constructor(
      * 다른 앱(드라이브, 메일, 카톡 등)으로 보내기. PC 로 옮기는 또 하나의 경로.
      * 여러 개면 과목 폴더 통째로. 텍스트가 있으면 화면이 무엇을 보낼지 먼저 묻는다.
      */
-    fun export(recordings: List<Recording>, audio: Boolean = true, text: Boolean = false) =
-        viewModelScope.launch { export.send(recordings, audio, text) }
+    fun export(recordings: List<Recording>, audio: Boolean, text: Boolean, summary: Boolean) =
+        viewModelScope.launch { export.send(recordings, audio, text, summary) }
 
+    /** 보내기: 텍스트·요약이 없으면 녹음만 바로, 있으면 [onChoose] 로 무엇을 보낼지 묻는다. */
+    fun share(recordings: List<Recording>, onChoose: (RecordingExport.Available) -> Unit) = viewModelScope.launch {
+        val a = export.available(recordings)
+        if (a.text || a.summary) onChoose(a) else export.send(recordings, audio = true, text = false)
+    }
+
+
+    private companion object {
+        const val KEY_COLLAPSED = "collapsed_subjects"
+    }
 }

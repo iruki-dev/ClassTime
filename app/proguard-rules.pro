@@ -28,3 +28,7 @@
 -keepclassmembers class dev.iruki.classtime.data.Recording { <fields>; }
 -keepclassmembers class dev.iruki.classtime.data.Term { <fields>; }
 -keepclassmembers class dev.iruki.classtime.data.ScheduleException { <fields>; }
+
+# 강의 요약(Claude 공식 SDK). SDK 가 축소 규칙을 함께 싣지만, 그 의존성인 OpenTelemetry API 가
+# 컴파일 때만 쓰는 AutoValue 주석을 가리킨다. 실행 중에는 없어도 되는 주석이라 경고만 끈다.
+-dontwarn com.google.auto.value.AutoValue

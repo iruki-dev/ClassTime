@@ -17,9 +17,18 @@ data class AiConfig(
     val autoTranscribe: Boolean = true,
     /** 실험적 기능 화면의 ‘사용’ 스위치. 끄면 키는 남기고 변환만 멈춘다. */
     val switchOn: Boolean = true,
+    /** 저장된 Claude 키의 끝 네 자리. 없으면 요약을 할 수 없다. */
+    val claudeKeyHint: String? = null,
+    val claudeRejected: Boolean = false,
+    /** 텍스트 변환이 끝나면 바로 요약. */
+    val autoSummarize: Boolean = true,
+    val summaryModel: SummaryModel = SummaryModel.DEFAULT,
 ) {
     /** 변환을 할 수 있는 상태(키 있음 + 스위치 켬). */
     val enabled get() = groqKeyHint != null && switchOn
+
+    /** 요약을 할 수 있는 상태. 요약할 텍스트가 있어야 하므로 변환 설정과 같은 스위치를 따른다. */
+    val summaryEnabled get() = claudeKeyHint != null && switchOn
 }
 
 /**
@@ -59,6 +68,62 @@ class AiSettings(context: Context, private val secrets: Secrets) {
     }
 
     fun setAutoTranscribe(on: Boolean) = edit { putBoolean(AUTO, on) }
+
+    // --- 강의 요약 (Claude) ---
+
+    fun claudeKey(): String? = secrets.get(KEY_CLAUDE)
+
+    /** 확인을 마친 키만 저장한다. null 이면 지운다. */
+    fun setClaudeKey(key: String?) {
+        secrets.put(KEY_CLAUDE, key?.trim())
+        prefs.edit().putString(HINT_CLAUDE, key?.trim()?.let(::hint)).putBoolean(REJECTED_CLAUDE, false).apply()
+        refresh()
+    }
+
+    fun markClaudeRejected() = edit { putBoolean(REJECTED_CLAUDE, true) }
+    fun setAutoSummarize(on: Boolean) = edit { putBoolean(AUTO_SUMMARY, on) }
+    fun setSummaryModel(model: SummaryModel) = edit { putString(SUMMARY_MODEL, model.id) }
+
+    // --- 요약 사용량 (Claude) ---
+
+    /** 달마다 쓴 토큰과 추정 요금. 요약을 지워도 남는다(쓴 돈은 그대로이므로). */
+    data class SummaryMonth(val month: String, val count: Int, val inputTokens: Long, val outputTokens: Long, val dollars: Double)
+
+    @Synchronized
+    fun summaryMonths(): List<SummaryMonth> {
+        val json = prefs.getString(SUMMARY_USAGE, null) ?: return emptyList()
+        return runCatching {
+            val a = JSONArray(json)
+            (0 until a.length()).map {
+                a.getJSONObject(it).let { o ->
+                    SummaryMonth(o.getString("m"), o.getInt("n"), o.getLong("i"), o.getLong("o"), o.getDouble("d"))
+                }
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    /** 결과를 받은 요약 하나의 사용량을 그 달에 더한다. */
+    @Synchronized
+    fun recordSummaryUse(month: String, model: SummaryModel, inputTokens: Long, outputTokens: Long) {
+        val list = summaryMonths().toMutableList()
+        val i = list.indexOfFirst { it.month == month }
+        val prev = list.getOrNull(i) ?: SummaryMonth(month, 0, 0, 0, 0.0)
+        val next = prev.copy(
+            count = prev.count + 1,
+            inputTokens = prev.inputTokens + inputTokens,
+            outputTokens = prev.outputTokens + outputTokens,
+            dollars = prev.dollars + model.batchCost(inputTokens, outputTokens),
+        )
+        if (i >= 0) list[i] = next else list += next
+        val a = JSONArray(list.map { JSONObject().put("m", it.month).put("n", it.count).put("i", it.inputTokens).put("o", it.outputTokens).put("d", it.dollars) })
+        prefs.edit().putString(SUMMARY_USAGE, a.toString()).apply()
+        _usageTick.value = _usageTick.value + 1
+    }
+
+    /** 대본을 Anthropic 으로 보낸다는 안내를 확인했는지. */
+    var summaryConsented: Boolean
+        get() = prefs.getBoolean(CONSENT_SUMMARY, false)
+        set(value) = prefs.edit().putBoolean(CONSENT_SUMMARY, value).apply()
     fun setSwitchOn(on: Boolean) = edit { putBoolean(SWITCH, on) }
 
     /** 클라우드로 소리를 보낸다는 안내를 확인했는지. 처음 켤 때 한 번 보여 준다. */
@@ -103,6 +168,10 @@ class AiSettings(context: Context, private val secrets: Secrets) {
         groqRejected = prefs.getBoolean(REJECTED_GROQ, false),
         autoTranscribe = prefs.getBoolean(AUTO, true),
         switchOn = prefs.getBoolean(SWITCH, true),
+        claudeKeyHint = prefs.getString(HINT_CLAUDE, null),
+        claudeRejected = prefs.getBoolean(REJECTED_CLAUDE, false),
+        autoSummarize = prefs.getBoolean(AUTO_SUMMARY, true),
+        summaryModel = SummaryModel.of(prefs.getString(SUMMARY_MODEL, null).orEmpty()),
     )
 
     companion object {
@@ -118,6 +187,13 @@ class AiSettings(context: Context, private val secrets: Secrets) {
         private const val SWITCH = "switch_on"
         private const val CONSENT = "consent"
         private const val USAGE = "groq_usage"
+        private const val KEY_CLAUDE = "claude"
+        private const val HINT_CLAUDE = "claude_hint"
+        private const val REJECTED_CLAUDE = "claude_rejected"
+        private const val AUTO_SUMMARY = "auto_summarize"
+        private const val SUMMARY_MODEL = "summary_model"
+        private const val CONSENT_SUMMARY = "consent_summary"
+        private const val SUMMARY_USAGE = "summary_usage"
 
         /** 화면에 보일 키 끝 네 자리. */
         fun hint(key: String): String = "••••" + key.takeLast(4)
