@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ClassTime</title>
+<meta name="description" content="시간표대로 강의를 자동 녹음하고 과목별로 정리하는 안드로이드 앱">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <h1>ClassTime</h1>
+  <p>시간표를 한 번 등록해 두면 수업 시간에 맞춰 강의를 자동으로 녹음하고, 과목별 폴더에 정리해 주는 안드로이드 앱입니다.</p>
+
+  <div class="card">
+    <h2 style="margin-top:0">할 수 있는 일</h2>
+    <ul>
+      <li>시간표대로 녹음을 시작하고 끝내요. 파일은 <code>과목_날짜_시각.m4a</code>로 과목별 폴더에 저장돼요.</li>
+      <li>실험적 기능: 사용자가 넣은 Groq 키로 녹음을 글로 받아 적고, Anthropic(Claude) 키로 강의를 요약해요. 요약의 각 줄은 원문의 그 자리로 이어져요.</li>
+      <li>실험적 기능: 받아 적은 글과 요약을 사용자의 Google Drive에 맞춰 둬요. 녹음 파일은 올리지 않아요.</li>
+    </ul>
+  </div>
+
+  <h2>개인정보</h2>
+  <p>ClassTime에는 개발자가 운영하는 서버가 없고, 녹음과 글은 기기에 저장됩니다. 사용자가 켠 기능에 한해서만 Groq, Anthropic, Google Drive로 데이터가 전송됩니다. 자세한 내용은 <a href="privacy.html">개인정보처리방침</a>을 확인해 주세요.</p>
+
+  <h2>문의</h2>
+  <p><a href="https://github.com/iruki-dev/ClassTime/issues">GitHub 이슈</a>로 남겨 주세요.</p>
+
+  <footer>© 2026 ClassTime · <a href="privacy.html">개인정보처리방침</a></footer>
+</main>
+</body>
+</html>
