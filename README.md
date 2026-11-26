@@ -139,12 +139,15 @@ Kotlin + Jetpack Compose + Room 으로 작성된 네이티브 안드로이드 �
   올리지 않고, 앱에서 지운 글은 드라이브 휴지통으로 보냅니다(되살릴 수 있음). 연결을 끊어도 올린 파일은 남습니다.
 - 권한은 `drive.file` 하나 — 이 앱이 만든 파일만 보고 고칠 수 있습니다. 토큰은 저장하지 않고 매번 Google Play
   서비스에서 받습니다.
-- **처음 한 번 Google Cloud 설정이 필요합니다** (Firebase 와 같은 프로젝트를 쓰면 됩니다):
+- **처음 한 번 Google Cloud 설정이 필요합니다** (Firebase 와 같은 프로젝트를 씁니다):
   1. Google Cloud 콘솔 › API 및 서비스 › 라이브러리에서 **Google Drive API** 사용 설정.
-  2. OAuth 동의 화면 구성(외부, 테스트 중이면 테스터 Google 계정을 테스트 사용자로 추가).
-  3. 사용자 인증 정보 › OAuth 클라이언트 ID › **Android**: 패키지 `dev.iruki.classtime`, 서명 인증서 SHA-1
-     (배포용 키스토어: `keytool -list -v -keystore secrets/classtime-release.jks`). 디버그 빌드도 쓰려면 디버그
-     키의 SHA-1 로 하나 더.
+  2. Google 인증 플랫폼(OAuth 동의 화면): 앱 이름·지원 이메일을 넣고 대상은 **외부**. 데이터 액세스에
+     `…/auth/drive.file` 범위 추가. 이 범위는 민감하지 않은 범위라 **앱 게시(프로덕션)** 로 바꿔도 Google 심사가
+     필요 없습니다. ‘테스트’ 상태로 두면 테스트 사용자로 넣은 계정만 연결되고, 허락이 7일마다 끊깁니다.
+  3. 서명 인증서 SHA-1 등록. 디버그·배포가 같은 고정 키(`secrets/classtime-release.jks`)로 서명되므로 하나면
+     됩니다. Firebase 콘솔 › 프로젝트 설정 › 내 앱(Android `dev.iruki.classtime`) › **디지털 지문 추가**에 넣으면
+     Android OAuth 클라이언트가 자동으로 만들어집니다. (또는 Cloud 콘솔 › 사용자 인증 정보 › OAuth 클라이언트 ID ›
+     Android 로 직접 만들기.) SHA-1 은 `keytool -list -v -keystore secrets/classtime-release.jks` (비밀번호를 물으면 키스토어 비밀번호).
   설정이 없으면 연결할 때 ‘Google Cloud 설정이 필요해요’가 뜹니다.
 
 ### PC 로 옮기기
