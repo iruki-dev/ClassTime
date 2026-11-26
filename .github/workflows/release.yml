@@ -10,6 +10,11 @@ on:
         description: 테스터에게 보여줄 릴리스 노트
         required: false
         default: ''
+      fingerprint_only:
+        description: 배포하지 않고 서명 인증서 지문(SHA-1/SHA-256)만 확인
+        type: boolean
+        required: false
+        default: false
 
 jobs:
   distribute:
@@ -50,11 +55,33 @@ jobs:
           mkdir -p secrets
           printf '%s' "$KEYSTORE_BASE64" | base64 -d > secrets/classtime-release.jks
 
+      # 서명 인증서 지문은 공개 정보다(설치된 APK 에서도 누구나 읽을 수 있다).
+      # Google OAuth 클라이언트·Firebase 디지털 지문 등록에 쓰도록 실행 요약에 남긴다.
+      - name: Signing certificate fingerprint
+        env:
+          KS_PASSWORD: ${{ secrets.CLASSTIME_KEYSTORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.CLASSTIME_KEY_ALIAS }}
+        run: |
+          out=$(keytool -list -v -keystore secrets/classtime-release.jks -storepass "$KS_PASSWORD" -alias "${KS_ALIAS:-classtime}")
+          sha1=$(printf '%s\n' "$out" | sed -n 's/^[[:space:]]*SHA1: //p' | head -1)
+          sha256=$(printf '%s\n' "$out" | sed -n 's/^[[:space:]]*SHA256: //p' | head -1)
+          {
+            echo "### 서명 인증서 지문"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| SHA-1 | \`$sha1\` |"
+            echo "| SHA-256 | \`$sha256\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "SHA-1:   $sha1"
+          echo "SHA-256: $sha256"
+
       # 플러그인(CredentialsRetriever)이 받아들이는 인증은 세 가지다:
       # 서비스 계정 JSON, FIREBASE_TOKEN, 그리고 Firebase CLI 로그인 캐시.
       # 세 번째는 사람이 브라우저로 로그인한 기기에만 있으므로 CI 에서는 쓸 수 없다.
       # 둘 중 등록된 것을 알아서 쓴다.
       - name: Resolve Firebase credentials
+        if: ${{ !inputs.fingerprint_only }}
         env:
           SA_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
@@ -74,6 +101,7 @@ jobs:
           fi
 
       - name: Verify deployment config
+        if: ${{ !inputs.fingerprint_only }}
         env:
           CLASSTIME_KEYSTORE_FILE: secrets/classtime-release.jks
           CLASSTIME_KEYSTORE_PASSWORD: ${{ secrets.CLASSTIME_KEYSTORE_PASSWORD }}
@@ -83,6 +111,7 @@ jobs:
         run: ./gradlew deployConfigCheck
 
       - name: Build and upload
+        if: ${{ !inputs.fingerprint_only }}
         env:
           CLASSTIME_KEYSTORE_FILE: secrets/classtime-release.jks
           CLASSTIME_KEYSTORE_PASSWORD: ${{ secrets.CLASSTIME_KEYSTORE_PASSWORD }}
