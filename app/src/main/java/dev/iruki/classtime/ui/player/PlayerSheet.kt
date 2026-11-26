@@ -286,7 +286,6 @@ fun PlayerSheet(
                 SummaryPane(
                     view = summary,
                     enabled = text.ai.summaryEnabled,
-                    model = text.ai.summaryModel,
                     onSummarize = text.onSummarize,
                     onCancel = text.onDeleteSummary,
                     // 요약의 문장 → 그 자리의 대본과 녹음. 읽던 흐름을 끊지 않게 재생은 시작하지 않는다.

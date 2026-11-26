@@ -1,5 +1,20 @@
 package dev.iruki.classtime.ui.ai
 
+import android.widget.Toast
+import androidx.compose.material.icons.rounded.DoneAll
+import androidx.compose.ui.platform.LocalContext
+import dev.iruki.classtime.ai.BulkPlan
+import android.app.Activity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material.icons.rounded.AddToDrive
+import androidx.compose.material.icons.rounded.CloudDone
+import androidx.compose.material.icons.rounded.LinkOff
+import androidx.compose.material.icons.rounded.Sync
+import androidx.compose.material3.CircularProgressIndicator
+import dev.iruki.classtime.sync.DriveConfig
+import dev.iruki.classtime.sync.DriveError
 import androidx.compose.foundation.layout.Arrangement
 import dev.iruki.classtime.ai.SummaryModel
 import androidx.compose.material3.TextButton
@@ -80,6 +95,15 @@ fun AiLabsScreen(onBack: () -> Unit) {
     val summaryUsage by vm.summaryUsage.collectAsStateWithLifecycle()
     var keySheet by remember { mutableStateOf<KeyProvider?>(null) }
     var modelPicker by remember { mutableStateOf(false) }
+    var bulk by remember { mutableStateOf<BulkPlan?>(null) }
+    val drive by vm.driveConfig.collectAsStateWithLifecycle()
+    val consent = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { r ->
+        if (r.resultCode == Activity.RESULT_OK) vm.onDriveConsent(r.data)
+    }
+    val connectDrive = { vm.connectDrive { consent.launch(IntentSenderRequest.Builder(it).build()) } }
+    var confirmDisconnect by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val nothingText = stringResource(R.string.bulk_nothing)
     val hasGroq = config.groqKeyHint != null
 
     val keyRows = listOf<LabsRow>(
@@ -133,9 +157,68 @@ fun AiLabsScreen(onBack: () -> Unit) {
     )
 
     val queueAside = stringResource(R.string.ai_queue_count, queue.size)
-    val summaryAside = if (summaryUsage.count > 0) {
-        stringResource(R.string.summary_usage, summaryUsage.count, "%.2f".format(summaryUsage.dollars))
-    } else null
+
+    val driveStatus = driveStatusText(drive)
+    val driveRows = if (!drive.connected) listOf<LabsRow>(
+        { i, n ->
+            GroupRow(
+                index = i, count = n,
+                onClick = { connectDrive() },
+                leading = { RowIcon(Icons.Rounded.AddToDrive) },
+                supporting = {
+                    RowSupporting(
+                        if (drive.error == DriveError.SETUP) stringResource(R.string.drive_error_setup) else stringResource(R.string.drive_connect_hint),
+                        color = if (drive.error == DriveError.SETUP) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                },
+                trailing = { RowIcon(Icons.AutoMirrored.Rounded.KeyboardArrowRight) },
+            ) { RowHeadline(stringResource(R.string.drive_connect)) }
+        },
+    ) else listOf<LabsRow>(
+        { i, n ->
+            GroupRow(
+                index = i, count = n,
+                onClick = { if (drive.error == DriveError.RECONNECT) connectDrive() else vm.syncDriveNow() },
+                leading = { RowIcon(Icons.Rounded.CloudDone) },
+                supporting = {
+                    RowSupporting(
+                        driveStatus,
+                        color = if (drive.error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                },
+                trailing = {
+                    if (drive.running) CircularProgressIndicator(Modifier.padding(12.dp).size(24.dp), strokeWidth = 2.5.dp)
+                    else IconButton(onClick = { vm.syncDriveNow() }) {
+                        Icon(Icons.Rounded.Sync, contentDescription = stringResource(R.string.drive_sync_now))
+                    }
+                },
+            ) { RowHeadline(drive.email ?: stringResource(R.string.drive_title)) }
+        },
+        { i, n ->
+            GroupRow(
+                index = i, count = n,
+                onClick = { confirmDisconnect = true },
+                leading = { RowIcon(Icons.Rounded.LinkOff) },
+            ) { RowHeadline(stringResource(R.string.drive_disconnect)) }
+        },
+    )
+
+    val toolRows = listOf<LabsRow>(
+        { i, n ->
+            GroupRow(
+                index = i, count = n,
+                onClick = {
+                    vm.planBulk { plan ->
+                        if (plan.isEmpty) Toast.makeText(context, nothingText, Toast.LENGTH_SHORT).show() else bulk = plan
+                    }
+                },
+                leading = { RowIcon(Icons.Rounded.DoneAll) },
+                supporting = {
+                    RowSupporting(stringResource(if (config.summaryEnabled) R.string.bulk_hint_summary else R.string.bulk_hint_text))
+                },
+            ) { RowHeadline(stringResource(if (config.summaryEnabled) R.string.bulk_title_summary else R.string.bulk_title_text)) }
+        },
+    )
 
     Scaffold(
         containerColor = AppTheme.colors.page,
@@ -156,11 +239,17 @@ fun AiLabsScreen(onBack: () -> Unit) {
             section("keys", R.string.ai_section_keys, null, keyRows)
             if (config.enabled) {
                 section("convert", R.string.ai_section_convert, null, convertRows)
-                if (config.summaryEnabled) section("summary", R.string.summary_section, summaryAside, summaryRows)
+                if (config.summaryEnabled) {
+                    section("summary", R.string.summary_section, null, summaryRows)
+                    item(key = "h_usage") { SectionTitle(R.string.summary_usage_title, null) }
+                    item(key = "usage") { UsageCard(summaryUsage, Modifier.padding(horizontal = ScreenPadding)) }
+                }
                 if (queue.isNotEmpty()) {
                     val rows = queue.map<QueueItem, LabsRow> { q -> { i, n -> QueueRow(i, n, q, onCancel = { vm.cancel(q.recording.id) }) } }
                     section("queue", R.string.ai_section_queue, queueAside, rows)
                 }
+                section("drive", R.string.drive_title, null, driveRows)
+                section("tools", R.string.bulk_section, null, toolRows)
                 item(key = "h_quota") { SectionTitle(R.string.ai_section_quota, null) }
                 item(key = "quota") { QuotaCard(quota, Modifier.padding(horizontal = ScreenPadding)) }
             }
@@ -174,6 +263,43 @@ fun AiLabsScreen(onBack: () -> Unit) {
             savedHint = if (provider == KeyProvider.GROQ) config.groqKeyHint else config.claudeKeyHint,
             vm = vm,
             onDismiss = { keySheet = null; vm.resetKeyCheck() },
+        )
+    }
+
+    if (confirmDisconnect) {
+        AlertDialog(
+            onDismissRequest = { confirmDisconnect = false },
+            title = { Text(stringResource(R.string.drive_disconnect_title)) },
+            text = { Text(stringResource(R.string.drive_disconnect_body)) },
+            confirmButton = { TextButton(onClick = { vm.disconnectDrive(); confirmDisconnect = false }) { Text(stringResource(R.string.drive_disconnect)) } },
+            dismissButton = { TextButton(onClick = { confirmDisconnect = false }) { Text(stringResource(R.string.action_cancel)) } },
+        )
+    }
+
+    bulk?.let { plan ->
+        AlertDialog(
+            onDismissRequest = { bulk = null },
+            title = { Text(stringResource(if (config.summaryEnabled) R.string.bulk_title_summary else R.string.bulk_title_text)) },
+            text = {
+                Text(
+                    buildString {
+                        if (plan.transcribe.isNotEmpty()) {
+                            append(
+                                stringResource(
+                                    if (config.summaryEnabled) R.string.bulk_count_text_summary else R.string.bulk_count_text,
+                                    plan.transcribe.size,
+                                )
+                            )
+                        }
+                        if (plan.summarize.isNotEmpty()) {
+                            if (isNotEmpty()) append('\n')
+                            append(stringResource(R.string.bulk_count_summary, plan.summarize.size))
+                        }
+                    }
+                )
+            },
+            confirmButton = { TextButton(onClick = { vm.runBulk(plan); bulk = null }) { Text(stringResource(R.string.bulk_start)) } },
+            dismissButton = { TextButton(onClick = { bulk = null }) { Text(stringResource(R.string.action_cancel)) } },
         )
     }
 
@@ -311,6 +437,35 @@ private fun QuotaCard(q: QuotaUse, modifier: Modifier = Modifier) {
     }
 }
 
+/** Claude 사용량(추정): 이번 달 · 전체. 정확한 청구액은 Anthropic 콘솔에서. */
+@Composable
+private fun UsageCard(u: SummaryUsage, modifier: Modifier = Modifier) {
+    val c = MaterialTheme.colorScheme
+    Surface(color = AppTheme.colors.group, shape = MaterialTheme.shapes.extraLarge, modifier = modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(verticalAlignment = Alignment.Bottom) {
+                Column(Modifier.weight(1f)) {
+                    Text(stringResource(R.string.summary_usage_month), style = MaterialTheme.typography.bodyMedium, color = c.onSurfaceVariant)
+                    Text("$" + "%.2f".format(u.monthDollars), style = MaterialTheme.typography.headlineMedium)
+                }
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(stringResource(R.string.summary_usage_count, u.monthCount), style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        stringResource(R.string.summary_usage_tokens, tokens(u.monthTokens)),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = c.onSurfaceVariant,
+                    )
+                }
+            }
+            Text(
+                stringResource(R.string.summary_usage_total, "%.2f".format(u.totalDollars), u.totalCount),
+                style = MaterialTheme.typography.bodySmall,
+                color = c.onSurfaceVariant,
+            )
+        }
+    }
+}
+
 /** 분 단위 사용량 막대. 85% 를 넘으면 주의색. */
 @Composable
 private fun Meter(label: String, used: Int, max: Int) {
@@ -374,6 +529,18 @@ private fun LazyListScope.section(key: String, title: Int, aside: String?, rows:
 @Composable
 private fun RowIcon(icon: ImageVector) {
     Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+}
+
+/** 드라이브 줄의 아랫글: 오류, 동기화 중, 또는 마지막 동기화 시각과 파일 수. */
+@Composable
+private fun driveStatusText(d: DriveConfig): String = when {
+    d.running -> stringResource(R.string.drive_syncing)
+    d.error == DriveError.RECONNECT -> stringResource(R.string.drive_error_reconnect)
+    d.error == DriveError.SETUP -> stringResource(R.string.drive_error_setup)
+    d.error == DriveError.QUOTA -> stringResource(R.string.drive_error_quota)
+    d.error == DriveError.OTHER -> stringResource(R.string.drive_error_other)
+    d.lastSyncAt > 0 -> stringResource(R.string.drive_synced, clockText(d.lastSyncAt), d.files)
+    else -> stringResource(R.string.drive_waiting)
 }
 
 /** 요약 모델 고르기. 고른 모델은 다음 요약부터. */

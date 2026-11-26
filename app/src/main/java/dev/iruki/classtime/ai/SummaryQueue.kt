@@ -25,6 +25,7 @@ import dev.iruki.classtime.data.SummaryError
 import dev.iruki.classtime.data.SummaryState
 import dev.iruki.classtime.data.TranscriptDao
 import dev.iruki.classtime.data.TranscriptState
+import dev.iruki.classtime.sync.DriveSyncWorker
 import dev.iruki.classtime.util.AppLog
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
@@ -88,7 +89,7 @@ class SummaryEngine(
                 }
             }
         }
-        Pass(summaries.pending().minOfOrNull { if (it.stateEnum == SummaryState.QUEUED) clock() else it.checkAt }, finished)
+        Pass(summaries.pending().filter { it.stateEnum == SummaryState.SUBMITTED }.minOfOrNull { it.checkAt }, finished)
     }
 
     /** 기다리는 요약을 모두 배치 하나로 보낸다. */
@@ -96,6 +97,8 @@ class SummaryEngine(
         val ready = mutableListOf<Pair<Summary, SummaryRequest>>()
         for (s in queued) {
             val t = transcripts.get(s.recordingId)
+            // 텍스트 변환을 기다리는 요약(전체 변환·요약): 변환이 끝나면 처리기가 다시 깨운다.
+            if (t != null && t.stateEnum.active) continue
             val rec = recordings.getById(s.recordingId)
             val paragraphs = t?.takeIf { it.stateEnum == TranscriptState.DONE }?.let { TranscriptJson.paragraphs(it.paragraphs) }.orEmpty()
             if (rec == null || paragraphs.isEmpty()) {
@@ -138,6 +141,13 @@ class SummaryEngine(
     }
 
     private suspend fun finish(s: Summary, outcome: SummaryOutcome?) {
+        // 결과가 오면 쓴 토큰을 기록한다(성공이든 잘렸든 요금은 나간다).
+        val used = when (outcome) {
+            is SummaryOutcome.Success -> outcome.inputTokens to outcome.outputTokens
+            is SummaryOutcome.Truncated -> outcome.inputTokens to outcome.outputTokens
+            else -> null
+        }
+        used?.let { (i, o) -> settings.recordSummaryUse(month(clock()), SummaryModel.of(s.model), i, o) }
         when (outcome) {
             is SummaryOutcome.Success -> {
                 val t = transcripts.get(s.recordingId)
@@ -181,6 +191,10 @@ class SummaryEngine(
 
         fun customId(recordingId: Long) = "rec-$recordingId"
 
+        /** 사용량을 묶는 달(기기 시간대). */
+        fun month(at: Long): String =
+            java.time.Instant.ofEpochMilli(at).atZone(java.time.ZoneId.systemDefault()).let { "%04d-%02d".format(it.year, it.monthValue) }
+
         /**
          * n 번째 확인까지 기다리는 시간. 배치는 대개 몇 분, 길어도 한 시간 안에 끝나므로
          * 처음에는 자주, 그다음은 드물게(최대 15분) 본다.
@@ -222,13 +236,32 @@ class SummaryQueue(
     suspend fun remove(recordingId: Long) {
         dao.delete(recordingId)
         recordings.getById(recordingId)?.let { runCatching { files.delete(it, TextKind.SUMMARY) } }
+        DriveSyncWorker.kick(context)
     }
 
-    /** 텍스트 변환이 막 끝났을 때. 자동 요약이 켜져 있으면 맡긴다. */
-    suspend fun onTranscribed(recordingId: Long) {
+    /**
+     * 텍스트 변환이 막 끝났을 때(성공·실패). 변환을 기다리던 요약이 있으면 처리기를 깨우고,
+     * 없으면 자동 요약이 켜져 있을 때 맡긴다.
+     */
+    suspend fun onTranscribed(recordingId: Long, ok: Boolean = true) {
+        if (dao.get(recordingId)?.stateEnum?.active == true) {
+            kick()
+            return
+        }
+        if (!ok) return
         val c = settings.config.value
         if (!c.summaryEnabled || c.claudeRejected || !c.autoSummarize || !settings.summaryConsented) return
         enqueue(recordingId)
+    }
+
+    /**
+     * 텍스트 변환을 맡긴 녹음의 요약을 미리 맡겨 둔다. 변환이 끝나면 이어서 요약한다
+     * (변환에 실패하면 ‘요약할 텍스트 없음’으로 끝난다).
+     */
+    suspend fun enqueueAfterText(recordingId: Long, model: SummaryModel = settings.config.value.summaryModel) {
+        val existing = dao.get(recordingId)
+        if (existing != null && existing.stateEnum.active) return
+        dao.upsert(Summary(recordingId = recordingId, model = model.id, queuedAt = clock()))
     }
 
     /** 처리기를 깨운다. 이미 돌고 있으면 그 뒤에 이어 붙는다. */
@@ -285,6 +318,7 @@ class SummaryWorker(context: Context, params: WorkerParameters) : CoroutineWorke
                 return@withLock Result.retry()
             }
         notifyFinished(pass.finished)
+        if (pass.finished.isNotEmpty()) DriveSyncWorker.kick(applicationContext)
         if (pass.offline) return@withLock Result.retry()
         pass.nextAt?.let { deps.summaryQueue().wakeAfter(it - System.currentTimeMillis()) }
         Result.success()

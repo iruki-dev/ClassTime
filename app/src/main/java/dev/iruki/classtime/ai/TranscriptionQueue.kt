@@ -12,6 +12,7 @@ import dev.iruki.classtime.data.SummaryDao
 import dev.iruki.classtime.data.Transcript
 import dev.iruki.classtime.data.TranscriptDao
 import dev.iruki.classtime.data.TranscriptState
+import dev.iruki.classtime.sync.DriveSyncWorker
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.sync.Mutex
@@ -55,6 +56,7 @@ class TranscriptionQueue(
         recordings.getById(recordingId)?.let { rec ->
             TextKind.entries.forEach { kind -> runCatching { files.delete(rec, kind) } }
         }
+        DriveSyncWorker.kick(context)
     }
 
     /** 이 기능이 생기기 전에 끝난 변환도 텍스트 파일로 남긴다(한 번만). */

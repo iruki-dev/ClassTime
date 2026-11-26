@@ -16,6 +16,7 @@ import dev.iruki.classtime.ai.AiConfig
 import dev.iruki.classtime.ai.AiSettings
 import dev.iruki.classtime.ai.TextFiles
 import dev.iruki.classtime.ai.TranscriptionQueue
+import dev.iruki.classtime.sync.DriveSyncWorker
 import dev.iruki.classtime.ui.share.RecordingExport
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
@@ -64,6 +65,17 @@ class RecordingsViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
     /** 과목 칩으로 거르기. 여러 개를 고를 수 있고, 비어 있으면 전체. */
+    /** 접어 둔 과목 폴더. 앱을 다시 열어도 그대로. */
+    private val folderPrefs = app.getSharedPreferences("recordings_ui", Context.MODE_PRIVATE)
+    private val _collapsed = MutableStateFlow(folderPrefs.getStringSet(KEY_COLLAPSED, emptySet()).orEmpty().toSet())
+    val collapsed = _collapsed.asStateFlow()
+
+    fun toggleFolder(subject: String) {
+        val next = _collapsed.value.let { if (subject in it) it - subject else it + subject }
+        _collapsed.value = next
+        folderPrefs.edit().putStringSet(KEY_COLLAPSED, next).apply()
+    }
+
     private val _filter = MutableStateFlow<Set<String>>(emptySet())
     val filter = _filter.asStateFlow()
 
@@ -98,6 +110,7 @@ class RecordingsViewModel @Inject constructor(
         if (storage.rename(Uri.parse(recording.uri), newFileName)) {
             runCatching { textFiles.rename(recording, newFileName) }
             repo.updateRecording(recording.copy(fileName = newFileName))
+            DriveSyncWorker.kick(app)
         }
     }
 
@@ -114,4 +127,8 @@ class RecordingsViewModel @Inject constructor(
         if (a.text || a.summary) onChoose(a) else export.send(recordings, audio = true, text = false)
     }
 
+
+    private companion object {
+        const val KEY_COLLAPSED = "collapsed_subjects"
+    }
 }

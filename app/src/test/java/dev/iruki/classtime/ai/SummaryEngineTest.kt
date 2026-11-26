@@ -198,6 +198,45 @@ class SummaryEngineTest {
     }
 
     @Test
+    fun summaryQueuedBeforeText_waitsForTranscription_thenGoesOut() = runBlocking {
+        db.transcriptDao().upsert(db.transcriptDao().get(2)!!.copy(state = TranscriptState.TRANSCRIBING.name))
+        queue.enqueueAfterText(2)
+        val waiting = engine.run()
+        assertThat(api.submitted).isEmpty()
+        assertThat(waiting.nextAt).isNull() // 변환이 끝나면 깨운다(돌며 기다리지 않는다).
+        assertThat(summary(2).stateEnum).isEqualTo(SummaryState.QUEUED)
+
+        db.transcriptDao().upsert(db.transcriptDao().get(2)!!.copy(state = TranscriptState.DONE.name))
+        queue.onTranscribed(2, ok = true)
+        engine.run()
+        assertThat(api.submitted.single().single().customId).isEqualTo("rec-2")
+    }
+
+    @Test
+    fun summaryWaitingForText_failsWhenTranscriptionFails() = runBlocking {
+        db.transcriptDao().upsert(db.transcriptDao().get(2)!!.copy(state = TranscriptState.TRANSCRIBING.name))
+        queue.enqueueAfterText(2)
+        db.transcriptDao().upsert(db.transcriptDao().get(2)!!.copy(state = TranscriptState.FAILED.name))
+        queue.onTranscribed(2, ok = false)
+        engine.run()
+        assertThat(summary(2).errorEnum).isEqualTo(SummaryError.NO_TEXT)
+    }
+
+    @Test
+    fun usage_isRecordedPerMonth_andSurvivesDeletingTheSummary() = runBlocking {
+        queue.enqueue(1)
+        engine.run()
+        now += 60_000
+        api.ended = true
+        engine.run()
+        queue.remove(1)
+        val month = settings.summaryMonths().single()
+        assertThat(month.count).isEqualTo(1)
+        assertThat(month.inputTokens).isEqualTo(12_000)
+        assertThat(month.dollars).isWithin(1e-9).of(SummaryModel.OPUS.batchCost(12_000, 3_000))
+    }
+
+    @Test
     fun withoutKey_failsWithKeyReason() = runBlocking {
         queue.enqueue(1)
         settings.setClaudeKey(null)

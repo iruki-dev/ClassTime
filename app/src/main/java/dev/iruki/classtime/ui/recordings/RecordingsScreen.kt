@@ -3,6 +3,12 @@ package dev.iruki.classtime.ui.recordings
 
 import android.text.format.DateFormat
 import androidx.compose.foundation.background
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -104,6 +110,7 @@ fun RecordingsScreen(onOpenPlayer: () -> Unit, onOpenText: (Long) -> Unit) {
     var deleting by remember { mutableStateOf<Recording?>(null) }
     var exporting by remember { mutableStateOf<Pair<List<Recording>, RecordingExport.Available>?>(null) }
     var reconverting by remember { mutableStateOf<Recording?>(null) }
+    val collapsed by vm.collapsed.collectAsStateWithLifecycle()
 
     val all = groups.flatMap { it.second }
     val visible = if (filter.isEmpty()) groups else groups.filter { it.first in filter }
@@ -154,16 +161,19 @@ fun RecordingsScreen(onOpenPlayer: () -> Unit, onOpenText: (Long) -> Unit) {
                 }
 
                 visible.forEach { (subject, recordings) ->
+                    val open = subject !in collapsed
                     item(key = "header_$subject") {
                         GroupHeader(
                             subject = subject,
                             icon = icons[subject].orEmpty(),
                             count = recordings.size,
                             totalBytes = recordings.sumOf { it.sizeBytes },
+                            open = open,
+                            onToggle = { vm.toggleFolder(subject) },
                             onShareAll = { vm.share(recordings) { exporting = recordings to it } },
                         )
                     }
-                    itemsIndexed(recordings, key = { _, r -> r.id }) { i, recording ->
+                    if (open) itemsIndexed(recordings, key = { _, r -> r.id }) { i, recording ->
                         RecordingRow(
                             recording = recording,
                             index = i,
@@ -279,9 +289,25 @@ private fun SubjectChip(label: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun GroupHeader(subject: String, icon: String, count: Int, totalBytes: Long, onShareAll: () -> Unit) {
+private fun GroupHeader(
+    subject: String,
+    icon: String,
+    count: Int,
+    totalBytes: Long,
+    open: Boolean,
+    onToggle: () -> Unit,
+    onShareAll: () -> Unit,
+) {
+    // 머리를 누르면 그 과목 폴더를 접거나 편다.
+    val rotation by animateFloatAsState(if (open) 0f else -90f, label = "folder")
+    val stateText = stringResource(if (open) R.string.recordings_folder_open else R.string.recordings_folder_closed)
     Row(
-        Modifier.fillMaxWidth().padding(start = ScreenPadding + 4.dp, end = 4.dp, top = 8.dp),
+        Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp)
+            .clickable(onClickLabel = stringResource(if (open) R.string.recordings_folder_collapse else R.string.recordings_folder_expand), onClick = onToggle)
+            .semantics { stateDescription = stateText }
+            .padding(start = ScreenPadding + 4.dp, end = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -297,6 +323,12 @@ private fun GroupHeader(subject: String, icon: String, count: Int, totalBytes: L
         IconButton(onClick = onShareAll) {
             Icon(Icons.Rounded.Share, contentDescription = stringResource(R.string.recordings_cd_share_group, subject))
         }
+        Icon(
+            Icons.Rounded.ExpandMore,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(end = 12.dp).rotate(rotation),
+        )
     }
 }
 

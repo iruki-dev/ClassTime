@@ -1,5 +1,7 @@
 package dev.iruki.classtime.ui.ai
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,7 +16,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Notes
@@ -29,7 +30,6 @@ import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Summarize
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -59,7 +59,6 @@ import dev.iruki.classtime.ai.Timestamps
 import dev.iruki.classtime.data.Summary
 import dev.iruki.classtime.data.SummaryError
 import dev.iruki.classtime.data.SummaryState
-import dev.iruki.classtime.ui.theme.AppTheme
 
 /**
  * 요약 탭이 그리는 것.
@@ -91,7 +90,6 @@ data class SummaryView(
 fun SummaryPane(
     view: SummaryView,
     enabled: Boolean,
-    model: SummaryModel,
     onSummarize: () -> Unit,
     onCancel: () -> Unit,
     onRef: (Int) -> Unit,
@@ -110,7 +108,7 @@ fun SummaryPane(
             !enabled -> Empty(Icons.Rounded.Summarize, stringResource(R.string.summary_needs_key)) {
                 TextButton(onClick = onOpenLabs) { Text(stringResource(R.string.summary_open_labs)) }
             }
-            else -> Empty(Icons.Rounded.Summarize, stringResource(R.string.summary_none_title), stringResource(modelName(model))) {
+            else -> Empty(Icons.Rounded.Summarize, stringResource(R.string.summary_none_title)) {
                 Button(onClick = onSummarize, modifier = Modifier.height(56.dp)) {
                     Icon(Icons.Rounded.AutoAwesome, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
@@ -204,103 +202,101 @@ private fun Status(s: Summary, onCancel: () -> Unit, onRetry: () -> Unit, onOpen
     }
 }
 
-/** 다 된 요약. */
+/** 다 된 요약. 공지 → 주제별 요점 → 용어. 모든 줄 오른쪽의 시각을 누르면 원문으로. */
 @Composable
 private fun Reading(view: SummaryView, onRef: (Int) -> Unit) {
     val c = MaterialTheme.colorScheme
     val s = view.content ?: return
-    val summary = view.summary ?: return
     fun at(refs: List<Int>): Long? = refs.firstOrNull()?.let { view.starts.getOrNull(it) }
+    fun go(refs: List<Int>): (() -> Unit)? = refs.firstOrNull()?.let { r -> { onRef(r) } }
 
     LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 96.dp)) {
         item(key = "head") {
-            Column(Modifier.padding(start = 8.dp, end = 8.dp, bottom = 16.dp)) {
-                if (s.title.isNotBlank()) Text(s.title, style = MaterialTheme.typography.titleLarge)
+            Column(Modifier.padding(start = 8.dp, end = 8.dp, bottom = 8.dp)) {
+                if (s.title.isNotBlank()) Text(s.title, style = MaterialTheme.typography.headlineSmall)
                 if (s.overview.isNotBlank()) {
                     Text(
                         s.overview,
                         style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 26.sp, lineBreak = LineBreak.Paragraph),
                         color = c.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 8.dp),
+                        modifier = Modifier.padding(top = 12.dp),
                     )
                 }
             }
         }
         if (s.notices.isNotEmpty()) {
-            item(key = "notices") {
-                Surface(
-                    color = AppTheme.colors.cautionContainer,
-                    contentColor = AppTheme.colors.onCautionContainer,
-                    shape = RoundedCornerShape(24.dp),
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-                ) {
-                    Column(Modifier.padding(vertical = 8.dp)) {
-                        s.notices.forEach { n ->
-                            Line(
-                                text = n.text,
-                                at = at(n.refs),
-                                leading = { Icon(noticeIcon(n.kind), contentDescription = stringResource(noticeLabel(n.kind)), modifier = Modifier.size(20.dp)) },
-                                stampColor = AppTheme.colors.onCautionContainer,
-                                onClick = n.refs.firstOrNull()?.let { r -> { onRef(r) } },
+            item(key = "notices_h") { SectionLabel(stringResource(R.string.summary_notices)) }
+            items(s.notices.size, key = { "n$it" }) { i ->
+                val n = s.notices[i]
+                Line(
+                    text = n.text,
+                    at = at(n.refs),
+                    onClick = go(n.refs),
+                    leading = {
+                        Surface(color = c.secondaryContainer, contentColor = c.onSecondaryContainer, shape = RoundedCornerShape(8.dp)) {
+                            Icon(
+                                noticeIcon(n.kind),
+                                contentDescription = stringResource(noticeLabel(n.kind)),
+                                modifier = Modifier.padding(4.dp).size(16.dp),
                             )
                         }
-                    }
-                }
+                    },
+                )
             }
         }
         s.sections.forEachIndexed { i, sec ->
             item(key = "sec$i") {
-                Column(Modifier.padding(bottom = 12.dp)) {
-                    Line(
-                        text = sec.heading,
-                        at = at(sec.refs),
-                        heading = true,
-                        onClick = sec.refs.firstOrNull()?.let { r -> { onRef(r) } },
-                    )
+                Column {
+                    SectionLabel(sec.heading.ifBlank { "${i + 1}" }, at = at(sec.refs), onClick = go(sec.refs))
                     sec.points.forEach { p ->
                         Line(
                             text = p.text,
                             at = at(p.refs),
-                            leading = { Text("•", style = MaterialTheme.typography.bodyLarge, color = c.primary) },
-                            onClick = p.refs.firstOrNull()?.let { r -> { onRef(r) } },
+                            onClick = go(p.refs),
+                            leading = { Box(Modifier.padding(top = 9.dp).size(6.dp).background(c.outline, CircleShape)) },
                         )
                     }
                 }
             }
         }
         if (s.terms.isNotEmpty()) {
-            item(key = "terms_h") {
-                Text(
-                    stringResource(R.string.summary_terms),
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.padding(start = 8.dp, top = 8.dp, bottom = 4.dp),
-                )
-            }
-            items(s.terms, key = { "t_" + it.term }) { t ->
-                Line(
-                    text = t.term,
-                    detail = t.definition,
-                    at = at(t.refs),
-                    onClick = t.refs.firstOrNull()?.let { r -> { onRef(r) } },
-                )
+            item(key = "terms_h") { SectionLabel(stringResource(R.string.summary_terms)) }
+            items(s.terms.size, key = { "t$it" }) { i ->
+                val t = s.terms[i]
+                Line(text = t.term, detail = t.definition, at = at(t.refs), onClick = go(t.refs))
             }
         }
-        item(key = "foot") {
-            HorizontalDivider(Modifier.padding(top = 16.dp, bottom = 12.dp), color = c.outlineVariant)
-            val model = SummaryModel.of(summary.model)
-            val cost = model.batchCost(summary.inputTokens, summary.outputTokens)
-            Text(
-                stringResource(
-                    R.string.summary_footer,
-                    stringResource(modelName(model)),
-                    tokens(summary.inputTokens + summary.outputTokens),
-                    "%.3f".format(cost),
-                ),
-                style = MaterialTheme.typography.bodySmall,
-                color = c.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 8.dp),
-            )
+    }
+}
+
+/** 묶음 제목(공지·주제·용어). 주제는 시작 시각을 달고 누르면 원문으로. */
+@Composable
+private fun SectionLabel(text: String, at: Long? = null, onClick: (() -> Unit)? = null) {
+    val click = if (at != null) onClick else null
+    Surface(
+        onClick = click ?: {},
+        enabled = click != null,
+        color = Color.Transparent,
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier.fillMaxWidth().padding(top = 20.dp, bottom = 2.dp),
+    ) {
+        Row(Modifier.padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(text, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f))
+            if (at != null) Stamp(at)
         }
+    }
+}
+
+/** 원문 시각 알약. */
+@Composable
+private fun Stamp(at: Long) {
+    val c = MaterialTheme.colorScheme
+    Surface(color = c.surfaceContainerHigh, contentColor = c.onSurfaceVariant, shape = RoundedCornerShape(50), modifier = Modifier.padding(start = 12.dp)) {
+        Text(
+            Timestamps.format(at),
+            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+        )
     }
 }
 
@@ -314,12 +310,9 @@ private fun Line(
     at: Long?,
     onClick: (() -> Unit)?,
     detail: String? = null,
-    heading: Boolean = false,
-    stampColor: Color = MaterialTheme.colorScheme.primary,
     leading: (@Composable () -> Unit)? = null,
 ) {
-    val stamp = at?.let { Timestamps.format(it) }
-    val cd = stamp?.let { stringResource(R.string.summary_cd_ref, text, it) }
+    val cd = at?.let { stringResource(R.string.summary_cd_ref, text, Timestamps.format(it)) }
     val click = if (at != null) onClick else null
     Surface(
         onClick = click ?: {},
@@ -330,13 +323,12 @@ private fun Line(
     ) {
         Row(Modifier.padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.Top) {
             if (leading != null) {
-                Box(Modifier.padding(top = 2.dp, end = 10.dp).width(20.dp), contentAlignment = Alignment.Center) { leading() }
+                Box(Modifier.padding(end = 12.dp).width(24.dp), contentAlignment = Alignment.TopCenter) { leading() }
             }
             Column(Modifier.weight(1f)) {
                 Text(
                     text,
-                    style = if (heading) MaterialTheme.typography.titleMedium
-                    else MaterialTheme.typography.bodyLarge.copy(lineHeight = 24.sp, lineBreak = LineBreak.Paragraph),
+                    style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 24.sp, lineBreak = LineBreak.Paragraph),
                     fontWeight = if (detail != null) FontWeight.SemiBold else null,
                 )
                 if (detail != null) {
@@ -348,14 +340,7 @@ private fun Line(
                     )
                 }
             }
-            if (stamp != null) {
-                Text(
-                    stamp,
-                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                    color = stampColor,
-                    modifier = Modifier.padding(start = 12.dp, top = if (heading) 4.dp else 3.dp),
-                )
-            }
+            if (at != null) Box(Modifier.padding(top = 2.dp)) { Stamp(at) }
         }
     }
 }

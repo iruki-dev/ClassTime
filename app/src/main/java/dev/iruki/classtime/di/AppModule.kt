@@ -10,6 +10,8 @@ import dagger.hilt.components.SingletonComponent
 import dev.iruki.classtime.audio.RecordingScanner
 import dev.iruki.classtime.audio.RecordingStorage
 import dev.iruki.classtime.data.AppDatabase
+import dev.iruki.classtime.sync.DriveAuth
+import dev.iruki.classtime.sync.DriveSettings
 import dev.iruki.classtime.data.CourseDao
 import dev.iruki.classtime.data.RecordingDao
 import dev.iruki.classtime.data.ScheduleExceptionDao
@@ -113,6 +115,14 @@ object AppModule {
         settings: AiSettings,
         files: TextFiles,
     ): SummaryQueue = SummaryQueue(context, summaries, transcripts, recordings, settings, files)
+
+    @Provides
+    @Singleton
+    fun provideDriveSettings(@ApplicationContext context: Context): DriveSettings = DriveSettings(context)
+
+    @Provides
+    @Singleton
+    fun provideDriveAuth(@ApplicationContext context: Context): DriveAuth = DriveAuth(context)
 
     @Provides
     @Singleton

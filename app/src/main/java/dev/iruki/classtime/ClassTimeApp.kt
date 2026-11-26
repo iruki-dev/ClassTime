@@ -9,6 +9,7 @@ import dev.iruki.classtime.data.ClassTimeRepository
 import dev.iruki.classtime.di.ApplicationScope
 import dev.iruki.classtime.util.AppLog
 import dev.iruki.classtime.ai.TranscriptionQueue
+import dev.iruki.classtime.sync.DriveSyncWorker
 import javax.inject.Inject
 import dev.iruki.classtime.widget.TodayWidget
 import kotlinx.coroutines.CoroutineScope
@@ -40,6 +41,8 @@ class ClassTimeApp : Application() {
         }
         keepWidgetInSync()
         backfillTranscriptFiles()
+        // 앱을 열 때마다 드라이브와 맞춘다(연결돼 있을 때만). 놓친 변경을 따라잡는다.
+        DriveSyncWorker.kick(this, delayMs = 30_000)
     }
 
     /** 텍스트 파일 저장이 생기기 전에 끝난 변환도 파일로 남긴다. 한 번만. */

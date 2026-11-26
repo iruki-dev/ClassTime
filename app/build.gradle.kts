@@ -354,6 +354,10 @@ dependencies {
     // 실험적 기능 ‘강의 요약’: Claude API(공식 SDK). 릴리스 축소 규칙은 SDK 가 함께 싣는다.
     implementation(libs.anthropic.java)
 
+    // 텍스트·요약을 Google Drive 와 동기화(실험적 기능). drive.file 권한만 받는다.
+    implementation(libs.play.services.auth)
+    implementation(libs.kotlinx.coroutines.play.services)
+
     implementation(libs.hilt.android)
     implementation(libs.androidx.hilt.navigation.compose)
     ksp(libs.hilt.compiler)

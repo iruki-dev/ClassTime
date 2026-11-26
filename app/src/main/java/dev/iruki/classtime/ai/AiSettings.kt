@@ -84,6 +84,42 @@ class AiSettings(context: Context, private val secrets: Secrets) {
     fun setAutoSummarize(on: Boolean) = edit { putBoolean(AUTO_SUMMARY, on) }
     fun setSummaryModel(model: SummaryModel) = edit { putString(SUMMARY_MODEL, model.id) }
 
+    // --- 요약 사용량 (Claude) ---
+
+    /** 달마다 쓴 토큰과 추정 요금. 요약을 지워도 남는다(쓴 돈은 그대로이므로). */
+    data class SummaryMonth(val month: String, val count: Int, val inputTokens: Long, val outputTokens: Long, val dollars: Double)
+
+    @Synchronized
+    fun summaryMonths(): List<SummaryMonth> {
+        val json = prefs.getString(SUMMARY_USAGE, null) ?: return emptyList()
+        return runCatching {
+            val a = JSONArray(json)
+            (0 until a.length()).map {
+                a.getJSONObject(it).let { o ->
+                    SummaryMonth(o.getString("m"), o.getInt("n"), o.getLong("i"), o.getLong("o"), o.getDouble("d"))
+                }
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    /** 결과를 받은 요약 하나의 사용량을 그 달에 더한다. */
+    @Synchronized
+    fun recordSummaryUse(month: String, model: SummaryModel, inputTokens: Long, outputTokens: Long) {
+        val list = summaryMonths().toMutableList()
+        val i = list.indexOfFirst { it.month == month }
+        val prev = list.getOrNull(i) ?: SummaryMonth(month, 0, 0, 0, 0.0)
+        val next = prev.copy(
+            count = prev.count + 1,
+            inputTokens = prev.inputTokens + inputTokens,
+            outputTokens = prev.outputTokens + outputTokens,
+            dollars = prev.dollars + model.batchCost(inputTokens, outputTokens),
+        )
+        if (i >= 0) list[i] = next else list += next
+        val a = JSONArray(list.map { JSONObject().put("m", it.month).put("n", it.count).put("i", it.inputTokens).put("o", it.outputTokens).put("d", it.dollars) })
+        prefs.edit().putString(SUMMARY_USAGE, a.toString()).apply()
+        _usageTick.value = _usageTick.value + 1
+    }
+
     /** 대본을 Anthropic 으로 보낸다는 안내를 확인했는지. */
     var summaryConsented: Boolean
         get() = prefs.getBoolean(CONSENT_SUMMARY, false)
@@ -157,6 +193,7 @@ class AiSettings(context: Context, private val secrets: Secrets) {
         private const val AUTO_SUMMARY = "auto_summarize"
         private const val SUMMARY_MODEL = "summary_model"
         private const val CONSENT_SUMMARY = "consent_summary"
+        private const val SUMMARY_USAGE = "summary_usage"
 
         /** 화면에 보일 키 끝 네 자리. */
         fun hint(key: String): String = "••••" + key.takeLast(4)
