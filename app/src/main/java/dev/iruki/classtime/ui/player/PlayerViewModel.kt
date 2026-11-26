@@ -26,6 +26,7 @@ import dev.iruki.classtime.data.ClassTimeRepository
 import dev.iruki.classtime.data.Recording
 import dev.iruki.classtime.data.TranscriptState
 import dev.iruki.classtime.ui.ai.SummaryView
+import dev.iruki.classtime.ui.ai.TextStage
 import dev.iruki.classtime.ui.ai.TranscriptView
 import dev.iruki.classtime.util.SystemScreens
 import javax.inject.Inject
@@ -100,7 +101,12 @@ class PlayerViewModel @Inject constructor(
             else combine(summaries.observe(id), queue.observe(id)) { s, t ->
                 val done = t?.stateEnum == TranscriptState.DONE
                 val starts = if (done) TranscriptJson.paragraphs(t!!.paragraphs).map { it.startMs } else emptyList()
-                SummaryView.of(s, starts, done)
+                val text = when {
+                    done -> TextStage.READY
+                    t != null && t.stateEnum.active -> TextStage.RUNNING
+                    else -> TextStage.NONE
+                }
+                SummaryView.of(s, starts, text)
             }
         }
         .flowOn(Dispatchers.Default)
@@ -158,6 +164,15 @@ class PlayerViewModel @Inject constructor(
     /** 요약을 맡긴다(끝난 것도 처음부터 다시). */
     fun summarize(recordingId: Long) = viewModelScope.launch { summaries.enqueue(recordingId) }
     fun deleteSummary(recordingId: Long) = viewModelScope.launch { summaries.remove(recordingId) }
+
+    /** 텍스트가 없을 때: 변환을 맡기고, 끝나면 이어서 요약한다. */
+    fun convertThenSummarize(recordingId: Long) = viewModelScope.launch {
+        queue.enqueue(recordingId)
+        summaries.enqueueAfterText(recordingId)
+    }
+
+    /** 변환 중일 때: 끝나면 요약한다. */
+    fun summarizeAfterText(recordingId: Long) = viewModelScope.launch { summaries.enqueueAfterText(recordingId) }
 
     fun copySummary(recording: Recording, view: SummaryView) {
         val content = view.content ?: return

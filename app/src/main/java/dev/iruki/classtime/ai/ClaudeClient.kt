@@ -35,8 +35,20 @@ enum class SummaryModel(val id: String, private val inPerM: Double, private val 
         return (inputTokens * i + outputTokens * o) / 1_000_000.0 * 0.5
     }
 
+    /**
+     * 녹음 길이만으로 어림한 요약 요금(달러, 배치). 강의 1시간 ≈ 입력 2만 · 출력 4천 토큰
+     * (지시문 포함, 한국어 강의의 말 빠르기로 어림한 값). 확인 창의 ‘약’ 금액에만 쓴다.
+     */
+    fun estimate(audioMs: Long): Double {
+        val hours = audioMs / 3_600_000.0
+        return batchCost((IN_PER_HOUR * hours).toLong() + SYSTEM_TOKENS, (OUT_PER_HOUR * hours).toLong())
+    }
+
     companion object {
         val DEFAULT = OPUS
+        private const val IN_PER_HOUR = 18_000L
+        private const val SYSTEM_TOKENS = 2_000L
+        private const val OUT_PER_HOUR = 4_000L
         fun of(id: String) = entries.firstOrNull { it.id == id } ?: DEFAULT
     }
 }

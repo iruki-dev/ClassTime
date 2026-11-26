@@ -1,5 +1,10 @@
 package dev.iruki.classtime.ui.ai
 
+import dev.iruki.classtime.data.SummaryState
+import dev.iruki.classtime.data.Summary
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.material.icons.rounded.Summarize
+import androidx.compose.foundation.background
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -166,9 +171,12 @@ fun TranscriptBadge(t: Transcript?) {
     if (t == null) return
     val c = MaterialTheme.colorScheme
     val state = t.stateEnum
+    if (state == TranscriptState.DONE) {
+        Badge(Icons.AutoMirrored.Rounded.Notes, stringResource(R.string.badge_text), stringResource(R.string.ai_status_done), c.secondaryContainer, c.onSecondaryContainer)
+        return
+    }
     val label = stringResource(
         when (state) {
-            TranscriptState.DONE -> R.string.ai_status_done
             TranscriptState.FAILED -> R.string.ai_status_failed
             TranscriptState.QUEUED -> R.string.ai_status_queued
             else -> R.string.ai_status_working
@@ -193,9 +201,33 @@ fun TranscriptBadge(t: Transcript?) {
                 if (count.isNotEmpty()) Text(count, style = MaterialTheme.typography.bodyMedium, color = c.primary)
             }
             state == TranscriptState.QUEUED -> Icon(Icons.Rounded.Schedule, null, tint = c.onSurfaceVariant, modifier = Modifier.size(16.dp))
-            state == TranscriptState.DONE -> Icon(Icons.AutoMirrored.Rounded.Notes, null, tint = c.onSurfaceVariant, modifier = Modifier.size(16.dp))
             else -> Icon(Icons.Rounded.Error, null, tint = c.error, modifier = Modifier.size(16.dp))
         }
+    }
+}
+
+/** 녹음 줄의 ‘요약’ 배지. 다 된 요약만 단다. */
+@Composable
+fun SummaryBadge(s: Summary?) {
+    if (s == null || s.stateEnum != SummaryState.DONE) return
+    val c = MaterialTheme.colorScheme
+    Badge(Icons.Rounded.Summarize, stringResource(R.string.badge_summary), stringResource(R.string.badge_summary_cd), c.tertiaryContainer, c.onTertiaryContainer)
+}
+
+/** 작은 알약 배지: 아이콘 + 짧은 글. */
+@Composable
+private fun Badge(icon: ImageVector, text: String, cd: String, bg: Color, fg: Color) {
+    Row(
+        Modifier
+            .height(20.dp)
+            .background(bg, RoundedCornerShape(6.dp))
+            .padding(horizontal = 6.dp)
+            .clearAndSetSemantics { contentDescription = cd },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Icon(icon, contentDescription = null, tint = fg, modifier = Modifier.size(14.dp))
+        Text(text, color = fg, style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold))
     }
 }
 

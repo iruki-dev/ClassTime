@@ -286,11 +286,13 @@ fun PlayerSheet(
                 SummaryPane(
                     view = summary,
                     enabled = text.ai.summaryEnabled,
+                    canConvert = text.ai.enabled,
                     onSummarize = text.onSummarize,
+                    onConvertThenSummarize = text.onConvertThenSummarize,
+                    onSummarizeAfterText = text.onSummarizeAfterText,
                     onCancel = text.onDeleteSummary,
                     // 요약의 문장 → 그 자리의 대본과 녹음. 읽던 흐름을 끊지 않게 재생은 시작하지 않는다.
                     onRef = { i -> summary.starts.getOrNull(i)?.let { onSeek(it.toInt()); text.onTab(PlayerTab.TEXT) } },
-                    onGoText = { text.onTab(PlayerTab.TEXT) },
                     onOpenLabs = text.onOpenLabs,
                     modifier = Modifier.weight(1f),
                 )
@@ -467,6 +469,8 @@ data class PlayerText(
     /** 요약 탭(실험적 기능). */
     val summary: SummaryView? = null,
     val onSummarize: () -> Unit = {},
+    val onConvertThenSummarize: () -> Unit = {},
+    val onSummarizeAfterText: () -> Unit = {},
     val onDeleteSummary: () -> Unit = {},
     val onCopySummary: () -> Unit = {},
 )

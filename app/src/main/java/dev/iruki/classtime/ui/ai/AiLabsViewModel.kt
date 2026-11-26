@@ -9,6 +9,10 @@ import dev.iruki.classtime.ai.AiSettings
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
+import java.time.YearMonth
+import dev.iruki.classtime.sync.DriveState
+import kotlinx.coroutines.flow.flowOn
 import com.google.android.gms.auth.api.identity.AuthorizationResult
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dev.iruki.classtime.ai.BulkPlan
@@ -36,7 +40,6 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -57,20 +60,34 @@ sealed interface KeyCheck {
 /** 키를 넣는 서비스. Groq: 받아 적기, Claude: 요약. */
 enum class KeyProvider { GROQ, CLAUDE }
 
-/** 요약 사용량(추정): 이번 달과 전체. */
+/** 요약 사용량(추정): 이번 달과 전체, 그리고 최근 여섯 달의 막대. */
 data class SummaryUsage(
     val monthCount: Int = 0,
     val monthDollars: Double = 0.0,
     val monthTokens: Long = 0,
     val totalCount: Int = 0,
     val totalDollars: Double = 0.0,
+    /** 오래된 달부터, 마지막이 이번 달. */
+    val months: List<MonthBar> = emptyList(),
 )
+
+/** 달 하나의 막대. [month] 는 1..12. */
+data class MonthBar(val month: Int, val dollars: Double)
 
 /** 대기열 한 줄. */
 data class QueueItem(val transcript: Transcript, val recording: Recording)
 
 /** 한도 막대 두 개(분). */
 data class QuotaUse(val hourUsed: Int, val hourMax: Int, val dayUsed: Int, val dayMax: Int)
+
+/** [now] 까지 여섯 달. 기록이 없는 달은 0. */
+internal fun lastMonths(ledger: List<AiSettings.SummaryMonth>, now: YearMonth, count: Int = 6): List<MonthBar> {
+    val byMonth = ledger.associate { it.month to it.dollars }
+    return (count - 1 downTo 0).map { back ->
+        val m = now.minusMonths(back.toLong())
+        MonthBar(m.monthValue, byMonth["%04d-%02d".format(m.year, m.monthValue)] ?: 0.0)
+    }
+}
 
 @HiltViewModel
 class AiLabsViewModel @Inject constructor(
@@ -111,8 +128,16 @@ class AiLabsViewModel @Inject constructor(
             monthTokens = (now?.inputTokens ?: 0) + (now?.outputTokens ?: 0),
             totalCount = months.sumOf { it.count },
             totalDollars = months.sumOf { it.dollars },
+            months = lastMonths(months, YearMonth.now()),
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SummaryUsage())
+
+    /** 지금 맡길 수 있는 것(설정의 ‘한꺼번에’ 줄과 확인 창). 녹음·텍스트·요약이 바뀌면 다시 센다. */
+    val bulkPlan: StateFlow<BulkPlan> = combine(
+        repo.recordings, queue.observeAll(), summaries.observeAll(), settings.config,
+    ) { recs, ts, ss, c ->
+        BulkPlan.of(recs, ts.associateBy { it.recordingId }, ss.associateBy { it.recordingId }, summaryEnabled = c.summaryEnabled && !c.claudeRejected)
+    }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), BulkPlan(emptyList(), emptyList()))
 
     private fun minuteTicks() = flow {
         while (true) {
@@ -174,6 +199,15 @@ class AiLabsViewModel @Inject constructor(
 
     fun syncDriveNow() = DriveSyncWorker.kick(app, delayMs = 0)
 
+    /** 드라이브의 ClassTime 폴더를 연다(아직 만들기 전이면 내 드라이브). */
+    fun openDrive() = viewModelScope.launch {
+        val root = withContext(Dispatchers.IO) { DriveState(DriveSyncWorker.stateFile(app)).rootId }
+        val url = if (root != null) "https://drive.google.com/drive/folders/$root" else "https://drive.google.com/drive/my-drive"
+        runCatching {
+            app.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }
+    }
+
     /** 연결 끊기. 드라이브에 올린 파일은 그대로 두고, 이 기기에서 더는 맞추지 않는다. */
     fun disconnectDrive() = viewModelScope.launch {
         driveAuth.revoke(drive.config.value.email)
@@ -182,15 +216,6 @@ class AiLabsViewModel @Inject constructor(
     }
 
     // --- 전체 텍스트 변환·요약 ---
-
-    /** 지금 맡길 것을 센다. 화면이 확인 창에 보여 준다. */
-    fun planBulk(onPlan: (BulkPlan) -> Unit) = viewModelScope.launch {
-        val recs = repo.recordings.first()
-        val ts = queue.observeAll().first().associateBy { it.recordingId }
-        val ss = summaries.observeAll().first().associateBy { it.recordingId }
-        val c = settings.config.value
-        onPlan(BulkPlan.of(recs, ts, ss, summaryEnabled = c.summaryEnabled && !c.claudeRejected))
-    }
 
     /** 텍스트가 없는 녹음은 변환한 뒤 요약까지, 요약만 없는 녹음은 요약을 맡긴다. */
     fun runBulk(plan: BulkPlan) = viewModelScope.launch {

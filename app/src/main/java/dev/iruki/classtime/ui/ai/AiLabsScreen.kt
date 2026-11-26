@@ -1,6 +1,17 @@
 package dev.iruki.classtime.ui.ai
 
 import android.widget.Toast
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.automirrored.rounded.OpenInNew
+import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.CloudOff
+import androidx.compose.material.icons.rounded.FolderOpen
+import androidx.compose.material.icons.rounded.Psychology
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.unit.sp
 import androidx.compose.material.icons.rounded.DoneAll
 import androidx.compose.ui.platform.LocalContext
 import dev.iruki.classtime.ai.BulkPlan
@@ -20,7 +31,6 @@ import dev.iruki.classtime.ai.SummaryModel
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.Summarize
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.selectable
@@ -96,6 +106,8 @@ fun AiLabsScreen(onBack: () -> Unit) {
     var keySheet by remember { mutableStateOf<KeyProvider?>(null) }
     var modelPicker by remember { mutableStateOf(false) }
     var bulk by remember { mutableStateOf<BulkPlan?>(null) }
+    val bulkPlan by vm.bulkPlan.collectAsStateWithLifecycle()
+    var driveSheet by remember { mutableStateOf(false) }
     val drive by vm.driveConfig.collectAsStateWithLifecycle()
     val consent = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { r ->
         if (r.resultCode == Activity.RESULT_OK) vm.onDriveConsent(r.data)
@@ -123,29 +135,8 @@ fun AiLabsScreen(onBack: () -> Unit) {
         },
     )
 
-    val summaryRows = listOf<LabsRow>(
-        { i, n ->
-            GroupRow(
-                index = i, count = n,
-                onClick = { vm.setAutoSummarize(!config.autoSummarize) },
-                leading = { RowIcon(Icons.Rounded.Bolt) },
-                trailing = { AppSwitch(config.autoSummarize, vm::setAutoSummarize) },
-                minHeight = 56.dp,
-            ) { RowHeadline(stringResource(R.string.summary_auto)) }
-        },
-        { i, n ->
-            GroupRow(
-                index = i, count = n,
-                onClick = { modelPicker = true },
-                leading = { RowIcon(Icons.Rounded.Tune) },
-                supporting = { RowSupporting(stringResource(modelName(config.summaryModel))) },
-                trailing = { RowIcon(Icons.AutoMirrored.Rounded.KeyboardArrowRight) },
-            ) { RowHeadline(stringResource(R.string.summary_model)) }
-        },
-    )
-
-    val convertRows = listOf<LabsRow>(
-        { i, n ->
+    val convertRows = buildList<LabsRow> {
+        add { i, n ->
             GroupRow(
                 index = i, count = n,
                 onClick = { vm.setAutoTranscribe(!config.autoTranscribe) },
@@ -153,69 +144,107 @@ fun AiLabsScreen(onBack: () -> Unit) {
                 trailing = { AppSwitch(config.autoTranscribe, vm::setAutoTranscribe) },
                 minHeight = 56.dp,
             ) { RowHeadline(stringResource(R.string.ai_auto)) }
-        },
-    )
+        }
+        if (config.summaryEnabled) {
+            add { i, n ->
+                GroupRow(
+                    index = i, count = n,
+                    onClick = { vm.setAutoSummarize(!config.autoSummarize) },
+                    leading = { RowIcon(Icons.Rounded.AutoAwesome) },
+                    trailing = { AppSwitch(config.autoSummarize, vm::setAutoSummarize) },
+                    minHeight = 56.dp,
+                ) { RowHeadline(stringResource(R.string.summary_auto)) }
+            }
+            add { i, n ->
+                GroupRow(
+                    index = i, count = n,
+                    onClick = { modelPicker = true },
+                    leading = { RowIcon(Icons.Rounded.Psychology) },
+                    supporting = { RowSupporting(stringResource(modelName(config.summaryModel))) },
+                    trailing = { RowIcon(Icons.AutoMirrored.Rounded.KeyboardArrowRight) },
+                ) { RowHeadline(stringResource(R.string.summary_model)) }
+            }
+        }
+    }
 
     val queueAside = stringResource(R.string.ai_queue_count, queue.size)
 
     val driveStatus = driveStatusText(drive)
-    val driveRows = if (!drive.connected) listOf<LabsRow>(
-        { i, n ->
-            GroupRow(
-                index = i, count = n,
-                onClick = { connectDrive() },
-                leading = { RowIcon(Icons.Rounded.AddToDrive) },
-                supporting = {
-                    RowSupporting(
-                        if (drive.error == DriveError.SETUP) stringResource(R.string.drive_error_setup) else stringResource(R.string.drive_connect_hint),
-                        color = if (drive.error == DriveError.SETUP) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                },
-                trailing = { RowIcon(Icons.AutoMirrored.Rounded.KeyboardArrowRight) },
-            ) { RowHeadline(stringResource(R.string.drive_connect)) }
-        },
-    ) else listOf<LabsRow>(
-        { i, n ->
-            GroupRow(
-                index = i, count = n,
-                onClick = { if (drive.error == DriveError.RECONNECT) connectDrive() else vm.syncDriveNow() },
-                leading = { RowIcon(Icons.Rounded.CloudDone) },
-                supporting = {
-                    RowSupporting(
-                        driveStatus,
-                        color = if (drive.error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                },
-                trailing = {
-                    if (drive.running) CircularProgressIndicator(Modifier.padding(12.dp).size(24.dp), strokeWidth = 2.5.dp)
-                    else IconButton(onClick = { vm.syncDriveNow() }) {
-                        Icon(Icons.Rounded.Sync, contentDescription = stringResource(R.string.drive_sync_now))
-                    }
-                },
-            ) { RowHeadline(drive.email ?: stringResource(R.string.drive_title)) }
-        },
-        { i, n ->
-            GroupRow(
-                index = i, count = n,
-                onClick = { confirmDisconnect = true },
-                leading = { RowIcon(Icons.Rounded.LinkOff) },
-            ) { RowHeadline(stringResource(R.string.drive_disconnect)) }
-        },
-    )
+    val c = MaterialTheme.colorScheme
+    val driveRows = when {
+        !drive.connected -> listOf<LabsRow>(
+            { i, n ->
+                val setup = drive.error == DriveError.SETUP
+                GroupRow(
+                    index = i, count = n,
+                    onClick = { driveSheet = true },
+                    leading = { Icon(Icons.Rounded.AddToDrive, contentDescription = null, tint = c.primary) },
+                    supporting = {
+                        RowSupporting(
+                            stringResource(if (setup) R.string.drive_error_setup else R.string.drive_connect_hint),
+                            color = if (setup) c.error else c.onSurfaceVariant,
+                        )
+                    },
+                    trailing = { RowIcon(Icons.AutoMirrored.Rounded.KeyboardArrowRight) },
+                ) { RowHeadline(stringResource(R.string.drive_connect)) }
+            },
+        )
+        drive.error == DriveError.RECONNECT -> listOf<LabsRow>(
+            { i, n ->
+                GroupRow(
+                    index = i, count = n,
+                    onClick = { connectDrive() },
+                    leading = { Icon(Icons.Rounded.CloudOff, contentDescription = null, tint = c.error) },
+                    supporting = { RowSupporting(driveStatus, color = c.error) },
+                    trailing = { RowIcon(Icons.AutoMirrored.Rounded.KeyboardArrowRight) },
+                ) { RowHeadline(drive.email ?: stringResource(R.string.drive_title)) }
+            },
+            { i, n -> DisconnectRow(i, n) { confirmDisconnect = true } },
+        )
+        else -> listOf<LabsRow>(
+            { i, n ->
+                GroupRow(
+                    index = i, count = n,
+                    onClick = { vm.syncDriveNow() },
+                    leading = {
+                        Icon(
+                            if (drive.error != null) Icons.Rounded.CloudOff else Icons.Rounded.CloudDone,
+                            contentDescription = null,
+                            tint = if (drive.error != null) c.error else c.primary,
+                        )
+                    },
+                    supporting = { RowSupporting(driveStatus, color = if (drive.error != null) c.error else c.onSurfaceVariant) },
+                    trailing = {
+                        if (drive.running) CircularProgressIndicator(Modifier.padding(12.dp).size(24.dp), strokeWidth = 2.5.dp)
+                        else IconButton(onClick = { vm.syncDriveNow() }) {
+                            Icon(Icons.Rounded.Sync, contentDescription = stringResource(R.string.drive_sync_now), tint = c.primary)
+                        }
+                    },
+                ) { RowHeadline(drive.email ?: stringResource(R.string.drive_title)) }
+            },
+            { i, n ->
+                GroupRow(
+                    index = i, count = n,
+                    onClick = { vm.openDrive() },
+                    leading = { RowIcon(Icons.Rounded.FolderOpen) },
+                    supporting = { RowSupporting(stringResource(R.string.drive_open_path)) },
+                    trailing = { RowIcon(Icons.AutoMirrored.Rounded.OpenInNew) },
+                ) { RowHeadline(stringResource(R.string.drive_open)) }
+            },
+            { i, n -> DisconnectRow(i, n) { confirmDisconnect = true } },
+        )
+    }
 
     val toolRows = listOf<LabsRow>(
         { i, n ->
             GroupRow(
                 index = i, count = n,
                 onClick = {
-                    vm.planBulk { plan ->
-                        if (plan.isEmpty) Toast.makeText(context, nothingText, Toast.LENGTH_SHORT).show() else bulk = plan
-                    }
+                    if (bulkPlan.isEmpty) Toast.makeText(context, nothingText, Toast.LENGTH_SHORT).show() else bulk = bulkPlan
                 },
                 leading = { RowIcon(Icons.Rounded.DoneAll) },
-                supporting = {
-                    RowSupporting(stringResource(if (config.summaryEnabled) R.string.bulk_hint_summary else R.string.bulk_hint_text))
-                },
+                supporting = { RowSupporting(bulkCounts(bulkPlan)) },
+                trailing = { RowIcon(Icons.AutoMirrored.Rounded.KeyboardArrowRight) },
             ) { RowHeadline(stringResource(if (config.summaryEnabled) R.string.bulk_title_summary else R.string.bulk_title_text)) }
         },
     )
@@ -238,9 +267,8 @@ fun AiLabsScreen(onBack: () -> Unit) {
             }
             section("keys", R.string.ai_section_keys, null, keyRows)
             if (config.enabled) {
-                section("convert", R.string.ai_section_convert, null, convertRows)
+                section("convert", if (config.summaryEnabled) R.string.ai_section_convert_summary else R.string.ai_section_convert, null, convertRows)
                 if (config.summaryEnabled) {
-                    section("summary", R.string.summary_section, null, summaryRows)
                     item(key = "h_usage") { SectionTitle(R.string.summary_usage_title, null) }
                     item(key = "usage") { UsageCard(summaryUsage, Modifier.padding(horizontal = ScreenPadding)) }
                 }
@@ -277,29 +305,19 @@ fun AiLabsScreen(onBack: () -> Unit) {
     }
 
     bulk?.let { plan ->
-        AlertDialog(
-            onDismissRequest = { bulk = null },
-            title = { Text(stringResource(if (config.summaryEnabled) R.string.bulk_title_summary else R.string.bulk_title_text)) },
-            text = {
-                Text(
-                    buildString {
-                        if (plan.transcribe.isNotEmpty()) {
-                            append(
-                                stringResource(
-                                    if (config.summaryEnabled) R.string.bulk_count_text_summary else R.string.bulk_count_text,
-                                    plan.transcribe.size,
-                                )
-                            )
-                        }
-                        if (plan.summarize.isNotEmpty()) {
-                            if (isNotEmpty()) append('\n')
-                            append(stringResource(R.string.bulk_count_summary, plan.summarize.size))
-                        }
-                    }
-                )
-            },
-            confirmButton = { TextButton(onClick = { vm.runBulk(plan); bulk = null }) { Text(stringResource(R.string.bulk_start)) } },
-            dismissButton = { TextButton(onClick = { bulk = null }) { Text(stringResource(R.string.action_cancel)) } },
+        BulkDialog(
+            plan = plan,
+            summarize = config.summaryEnabled && !config.claudeRejected,
+            model = config.summaryModel,
+            onStart = { vm.runBulk(plan); bulk = null },
+            onDismiss = { bulk = null },
+        )
+    }
+
+    if (driveSheet) {
+        DriveConnectSheet(
+            onConnect = { driveSheet = false; connectDrive() },
+            onDismiss = { driveSheet = false },
         )
     }
 
@@ -437,31 +455,62 @@ private fun QuotaCard(q: QuotaUse, modifier: Modifier = Modifier) {
     }
 }
 
-/** Claude 사용량(추정): 이번 달 · 전체. 정확한 청구액은 Anthropic 콘솔에서. */
+/** Claude 사용량(추정): 이번 달 금액 · 최근 여섯 달 막대 · 지금까지. 정확한 청구액은 Anthropic 콘솔에서. */
 @Composable
 private fun UsageCard(u: SummaryUsage, modifier: Modifier = Modifier) {
     val c = MaterialTheme.colorScheme
-    Surface(color = AppTheme.colors.group, shape = MaterialTheme.shapes.extraLarge, modifier = modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Surface(color = AppTheme.colors.group, shape = RoundedCornerShape(20.dp), modifier = modifier.fillMaxWidth()) {
+        Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Row(verticalAlignment = Alignment.Bottom) {
-                Column(Modifier.weight(1f)) {
-                    Text(stringResource(R.string.summary_usage_month), style = MaterialTheme.typography.bodyMedium, color = c.onSurfaceVariant)
-                    Text("$" + "%.2f".format(u.monthDollars), style = MaterialTheme.typography.headlineMedium)
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(stringResource(R.string.summary_usage_month), style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp), color = c.onSurfaceVariant)
+                    Text(dollars(u.monthDollars), style = MaterialTheme.typography.displaySmall.copy(fontSize = 36.sp, lineHeight = 44.sp, fontWeight = FontWeight.SemiBold))
                 }
-                Column(horizontalAlignment = Alignment.End) {
+                Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(stringResource(R.string.summary_usage_count, u.monthCount), style = MaterialTheme.typography.bodyMedium)
-                    Text(
-                        stringResource(R.string.summary_usage_tokens, tokens(u.monthTokens)),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = c.onSurfaceVariant,
-                    )
+                    Text(stringResource(R.string.summary_usage_tokens, tokens(u.monthTokens)), style = MaterialTheme.typography.bodyMedium, color = c.onSurfaceVariant)
                 }
             }
-            Text(
-                stringResource(R.string.summary_usage_total, "%.2f".format(u.totalDollars), u.totalCount),
-                style = MaterialTheme.typography.bodySmall,
-                color = c.onSurfaceVariant,
-            )
+            if (u.months.isNotEmpty()) MonthBars(u.months)
+            HorizontalDivider(color = c.outlineVariant.copy(alpha = 0.5f))
+            Row {
+                Text(
+                    stringResource(R.string.summary_usage_total, "%.2f".format(u.totalDollars), u.totalCount),
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp),
+                    color = c.onSurfaceVariant,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(stringResource(R.string.summary_usage_note), style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp), color = c.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+private fun dollars(d: Double) = "$" + "%.2f".format(d)
+
+/** 최근 여섯 달 요금 막대. 이번 달만 진하게. */
+@Composable
+private fun MonthBars(months: List<MonthBar>) {
+    val c = MaterialTheme.colorScheme
+    val max = months.maxOf { it.dollars }.takeIf { it > 0 } ?: 1.0
+    val parts = months.map { stringResource(R.string.summary_usage_cd_bar, it.month, "%.2f".format(it.dollars)) }
+    val cd = stringResource(R.string.summary_usage_cd_bars, parts.joinToString(", "))
+    Row(
+        Modifier.fillMaxWidth().height(76.dp).clearAndSetSemantics { contentDescription = cd },
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.Bottom,
+    ) {
+        months.forEachIndexed { i, m ->
+            val now = i == months.lastIndex
+            Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                val h = (m.dollars / max * 48).coerceAtLeast(4.0).dp
+                Box(Modifier.fillMaxWidth().height(h).background(if (now) c.primary else c.secondaryContainer, RoundedCornerShape(6.dp)))
+                Text(
+                    stringResource(R.string.summary_usage_bar_month, m.month),
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = if (now) FontWeight.SemiBold else FontWeight.Normal),
+                    color = if (now) c.onSurface else c.onSurfaceVariant,
+                )
+            }
         }
     }
 }
@@ -524,6 +573,22 @@ private fun LazyListScope.section(key: String, title: Int, aside: String?, rows:
     itemsIndexed(rows, key = { i, _ -> "r_${key}_$i" }) { i, row ->
         Box(Modifier.padding(horizontal = ScreenPadding, vertical = GroupGap / 2)) { row(i, rows.size) }
     }
+}
+
+@Composable
+private fun DisconnectRow(index: Int, count: Int, onClick: () -> Unit) {
+    GroupRow(index = index, count = count, onClick = onClick, leading = { RowIcon(Icons.Rounded.LinkOff) }, minHeight = 56.dp) {
+        RowHeadline(stringResource(R.string.drive_disconnect))
+    }
+}
+
+/** ‘한꺼번에’ 줄의 아랫글: 비어 있는 텍스트·요약 수. */
+@Composable
+private fun bulkCounts(p: BulkPlan): String = when {
+    p.transcribe.isNotEmpty() && p.summarize.isNotEmpty() -> stringResource(R.string.bulk_empty_both, p.transcribe.size, p.summarize.size)
+    p.transcribe.isNotEmpty() -> stringResource(R.string.bulk_empty_text, p.transcribe.size)
+    p.summarize.isNotEmpty() -> stringResource(R.string.bulk_empty_summary, p.summarize.size)
+    else -> stringResource(R.string.bulk_all_filled)
 }
 
 @Composable

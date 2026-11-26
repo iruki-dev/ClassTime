@@ -296,6 +296,8 @@ fun ClassTimeNavHost(
                 onShare = { playerVm.shareText(nowPlaying, it) },
                 summary = summary,
                 onSummarize = { playerVm.summarize(nowPlaying.id) },
+                onConvertThenSummarize = { playerVm.convertThenSummarize(nowPlaying.id) },
+                onSummarizeAfterText = { playerVm.summarizeAfterText(nowPlaying.id) },
                 onDeleteSummary = { playerVm.deleteSummary(nowPlaying.id) },
                 onCopySummary = { summary?.let { playerVm.copySummary(nowPlaying, it) } },
                 onOpenLabs = {

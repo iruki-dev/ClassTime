@@ -27,6 +27,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import dev.iruki.classtime.ai.SummaryQueue
+import dev.iruki.classtime.data.Summary
 
 @HiltViewModel
 class RecordingsViewModel @Inject constructor(
@@ -35,6 +37,7 @@ class RecordingsViewModel @Inject constructor(
     private val storage: RecordingStorage,
     private val player: PlaybackController,
     private val transcription: TranscriptionQueue,
+    summaryQueue: SummaryQueue,
     private val textFiles: TextFiles,
     private val export: RecordingExport,
     aiSettings: AiSettings,
@@ -42,6 +45,11 @@ class RecordingsViewModel @Inject constructor(
 
     /** 실험적 기능: 녹음 id → 텍스트 변환 상태. 기능을 쓰지 않으면 비어 있다. */
     val transcripts: StateFlow<Map<Long, Transcript>> = transcription.observeAll()
+        .map { list -> list.associateBy { it.recordingId } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
+
+    /** 실험적 기능: 녹음 id → 요약 상태. */
+    val summaries: StateFlow<Map<Long, Summary>> = summaryQueue.observeAll()
         .map { list -> list.associateBy { it.recordingId } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 

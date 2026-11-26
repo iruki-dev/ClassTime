@@ -47,4 +47,22 @@ class BulkPlanTest {
         assertThat(textOnly.summarize).isEmpty()
         assertThat(BulkPlan.of(listOf(rec(6)), ts, ss, true).isEmpty).isTrue()
     }
+
+    @Test
+    fun keepsDurations_andEstimatesCostFromLength() {
+        val recs = listOf(rec(1, durationMs = 90 * 60_000L), rec(2, durationMs = 60 * 60_000L))
+        val plan = BulkPlan.of(recs, mapOf(2L to t(2, TranscriptState.DONE)), emptyMap(), summaryEnabled = true)
+
+        assertThat(plan.transcribe).containsExactly(1L)
+        assertThat(plan.summarize).containsExactly(2L)
+        assertThat(plan.transcribeMs).isEqualTo(90 * 60_000L)
+        // 요약만 셀 때보다 변환할 것까지 셀 때 더 비싸고, 길이에 비례해 는다.
+        val only = plan.estimate(SummaryModel.OPUS, summarizeTranscribed = false)
+        val both = plan.estimate(SummaryModel.OPUS, summarizeTranscribed = true)
+        assertThat(only).isEqualTo(SummaryModel.OPUS.estimate(60 * 60_000L))
+        assertThat(both).isWithin(1e-9).of(only + SummaryModel.OPUS.estimate(90 * 60_000L))
+        // 강의 1시간 Opus 는 모델 고르기 안내(약 $0.08)와 어긋나지 않는다.
+        assertThat(only).isWithin(0.02).of(0.08)
+        assertThat(SummaryModel.HAIKU.estimate(60 * 60_000L)).isLessThan(0.01)
+    }
 }

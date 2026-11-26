@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
     <string name="app_name">ClassTime</string>
 
     <!-- ===== 공통 ===== -->
@@ -312,6 +312,7 @@
     <string name="recordings_empty_title">아직 녹음이 없어요</string>
     <string name="recordings_empty_hint">수업 시간이 되면 알아서, 또는 오늘 탭에서 직접 녹음할 수 있어요.</string>
     <string name="recordings_group_summary">%1$d개 · %2$s</string>
+    <string name="recordings_group_summaries">%1$d개 · %2$s · 요약 %3$d</string>
     <string name="recordings_cd_share_group">%1$s 녹음 모두 보내기</string>
     <string name="recordings_cd_storage">저장 위치</string>
     <string name="recordings_cd_pause">일시정지</string>
@@ -441,7 +442,7 @@
     <string name="ai_quota_hour">지난 1시간</string>
     <string name="ai_quota_day">지난 24시간</string>
     <string name="ai_minutes">%1$d분</string>
-    <string name="ai_footer">변환할 때만 녹음이 Groq로 전송돼요. 키는 이 기기에 암호화해 저장해요.</string>
+    <string name="ai_footer">녹음은 변환할 때만 Groq로, 받아 적은 글은 요약할 때만 Anthropic으로 가요. 드라이브에는 글만 올려요. 키는 이 기기에 암호화해 저장해요.</string>
     <string name="ai_cd_cancel_job">%1$s 변환 취소</string>
 
     <string name="ai_key_title">%1$s API 키</string>
@@ -469,9 +470,8 @@
     <string name="ai_key_claude_detail">강의 요약 · 배치 처리로 요금 절반</string>
     <string name="ai_consent_summary_title">텍스트를 밖으로 보내요</string>
     <string name="ai_consent_claude">받아 적은 강의 텍스트를 요약해요. 녹음 소리는 보내지 않아요.</string>
-    <string name="summary_section">요약</string>
-    <string name="summary_auto">텍스트 변환이 끝나면 요약</string>
-    <string name="summary_model">모델</string>
+    <string name="summary_auto">변환이 끝나면 요약</string>
+    <string name="summary_model">요약 모델</string>
     <string name="summary_model_opus">Claude Opus 5.5</string>
     <string name="summary_model_sonnet">Claude Sonnet 5.5</string>
     <string name="summary_model_haiku">Claude Haiku 5.5</string>
@@ -481,12 +481,25 @@
     <string name="summary_usage_title">Claude 사용량</string>
     <string name="drive_title">Google Drive</string>
     <string name="drive_connect">Google Drive 연결</string>
-    <string name="drive_connect_hint">녹음 파일은 빼고, 텍스트와 요약만 올려요</string>
+    <string name="drive_connect_hint">텍스트와 요약만 올려요 · 녹음 파일은 빼요</string>
+    <string name="drive_open">드라이브에서 열기</string>
+    <string name="drive_open_path">내 드라이브 › ClassTime</string>
+    <string name="drive_sheet_sub">텍스트와 요약을 늘 같게 맞춰요</string>
+    <string name="drive_tree_root">내 드라이브 › ClassTime</string>
+    <string name="drive_tree_subject">자료구조</string>
+    <string name="drive_tree_text" tools:ignore="TypographyDashes">자료구조_2026-10-06_0900.txt</string>
+    <string name="drive_tree_summary" tools:ignore="TypographyDashes">자료구조_2026-10-06_0900_요약.txt</string>
+    <string name="drive_tree_audio">녹음 파일은 올리지 않아요</string>
+    <string name="drive_point_sync">변환·요약이 끝나거나 이름을 바꾸면 알아서 맞춰요</string>
+    <string name="drive_point_trash">앱에서 지우면 드라이브 휴지통으로 가요</string>
+    <string name="drive_point_scope">이 앱이 만든 파일만 보고 고칠 수 있어요</string>
+    <string name="drive_connect_google">Google 계정으로 연결</string>
+    <string name="drive_later">나중에</string>
     <string name="drive_sync_now">지금 동기화</string>
     <string name="drive_syncing">동기화하는 중</string>
     <string name="drive_synced">%1$s에 맞춤 · 파일 %2$d개</string>
     <string name="drive_waiting">곧 동기화해요</string>
-    <string name="drive_error_reconnect">권한이 끊겼어요. 눌러서 다시 연결해 주세요</string>
+    <string name="drive_error_reconnect">권한이 끊겼어요 · 눌러서 다시 연결</string>
     <string name="drive_error_setup">Google Cloud 설정이 필요해요</string>
     <string name="drive_error_quota">드라이브 저장 공간이 부족해요</string>
     <string name="drive_error_other">동기화하지 못했어요. 눌러서 다시 시도</string>
@@ -496,27 +509,45 @@
     <string name="bulk_section">한꺼번에</string>
     <string name="bulk_title_summary">전체 텍스트 변환·요약</string>
     <string name="bulk_title_text">전체 텍스트 변환</string>
-    <string name="bulk_hint_summary">텍스트·요약이 없는 녹음을 찾아 맡겨요</string>
-    <string name="bulk_hint_text">텍스트가 없는 녹음을 찾아 맡겨요</string>
-    <string name="bulk_count_text_summary">텍스트 변환 후 요약 %1$d건</string>
-    <string name="bulk_count_text">텍스트 변환 %1$d건</string>
-    <string name="bulk_count_summary">요약 %1$d건</string>
+    <string name="bulk_row_text_summary">텍스트 변환 후 요약</string>
+    <string name="bulk_row_text">텍스트 변환</string>
+    <string name="bulk_row_summary">요약만</string>
+    <string name="bulk_row_length">녹음 %1$s</string>
+    <string name="bulk_count">%1$d건</string>
+    <string name="bulk_cost">예상 요금 약 $%1$s.</string>
+    <string name="bulk_quota_note">무료 한도에 닿으면 기다렸다가 이어서 해요.</string>
+    <string name="bulk_empty_both">텍스트 %1$d개 · 요약 %2$d개가 비어 있어요</string>
+    <string name="bulk_empty_text">텍스트 %1$d개가 비어 있어요</string>
+    <string name="bulk_empty_summary">요약 %1$d개가 비어 있어요</string>
+    <string name="bulk_all_filled">모두 채워져 있어요</string>
     <string name="bulk_start">맡기기</string>
     <string name="bulk_nothing">맡길 녹음이 없어요</string>
-    <string name="summary_usage_month">이번 달 (배치 요금 추정)</string>
+    <string name="summary_usage_month">이번 달</string>
+    <string name="summary_usage_note">배치 요금 기준 추정</string>
+    <string name="summary_usage_bar_month">%1$d월</string>
+    <string name="summary_usage_cd_bars">달별 요금: %1$s</string>
+    <string name="summary_usage_cd_bar">%1$d월 %2$s달러</string>
+    <string name="ai_section_convert_summary">변환 · 요약</string>
     <string name="summary_usage_count">요약 %1$d건</string>
     <string name="summary_usage_tokens">%1$s 토큰</string>
-    <string name="summary_usage_total">지금까지 $%1$s · %2$d건</string>
-    <string name="summary_needs_text">텍스트로 변환하면 요약할 수 있어요</string>
-    <string name="summary_go_text">텍스트 탭으로</string>
-    <string name="summary_needs_key">Claude 키를 넣으면 요약할 수 있어요</string>
+    <string name="summary_usage_total">지금까지 $%1$s · 요약 %2$d건</string>
+    <string name="summary_needs_key">Claude 키를 넣으면 요약할 수 있어요.</string>
     <string name="summary_open_labs">설정 열기</string>
     <string name="summary_none_title">강의 요약</string>
     <string name="summary_action">요약하기</string>
-    <string name="summary_state_queued">보낼 차례를 기다리는 중</string>
+    <string name="summary_state_waiting_text">텍스트를 기다리는 중</string>
+    <string name="summary_state_waiting_text_body">변환이 끝나면 이어서 요약해요.</string>
+    <string name="summary_empty_body">핵심만 정리하고, 줄마다 원문으로 이어져요.</string>
+    <string name="summary_no_text_title">먼저 텍스트로 바꿔요</string>
+    <string name="summary_no_text_body">텍스트로 바꾼 다음 이어서 요약해요.</string>
+    <string name="summary_needs_groq">텍스트로 바꾸려면 Groq 키가 필요해요.</string>
+    <string name="summary_convert">텍스트로 변환</string>
+    <string name="summary_text_running_title">텍스트로 바꾸는 중이에요</string>
+    <string name="summary_text_running_body">끝나면 이어서 요약할 수 있어요.</string>
+    <string name="summary_after_text">끝나면 요약하기</string>
     <string name="summary_state_running">요약하는 중</string>
     <string name="summary_state_failed">요약하지 못했어요</string>
-    <string name="summary_state_batch">배치로 보내 요금을 절반으로 줄여요. 보통 몇 분 안에 끝나요.</string>
+    <string name="summary_state_batch">보통 몇 분 안에 끝나요. 끝나면 알려 드릴게요.</string>
     <string name="summary_fail_key">Claude 키를 확인해 주세요.</string>
     <string name="summary_fail_no_text">요약할 텍스트가 없어요.</string>
     <string name="summary_fail_billing">Anthropic 계정의 잔액이나 한도를 확인해 주세요.</string>
@@ -588,6 +619,9 @@
     <string name="ai_reconvert_confirm">다시 변환</string>
     <string name="ai_copied">텍스트를 복사했어요</string>
     <string name="ai_status_done">텍스트 있음</string>
+    <string name="badge_text">텍스트</string>
+    <string name="badge_summary">요약</string>
+    <string name="badge_summary_cd">요약 있음</string>
     <string name="ai_status_working">텍스트 변환 중</string>
     <string name="ai_status_queued">텍스트 변환 대기 중</string>
     <string name="ai_status_failed">텍스트 변환 실패</string>
