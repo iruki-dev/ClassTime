@@ -120,7 +120,12 @@ class DriveAuth(private val context: Context) {
         const val SCOPE = "https://www.googleapis.com/auth/drive.file"
 
         /** 이 앱의 OAuth 클라이언트가 Google Cloud 에 없거나(패키지·SHA-1 불일치) Play 서비스 문제. */
-        fun isSetupError(e: Throwable) = e is ApiException && e.statusCode == CommonStatusCodes.DEVELOPER_ERROR
+        fun isSetupError(e: Throwable): Boolean {
+            val setup = e is ApiException && e.statusCode == CommonStatusCodes.DEVELOPER_ERROR
+            // 사용자에게는 ‘지금은 연결할 수 없어요’만 보인다. 개발자는 logcat 에서 원인을 본다.
+            if (setup) android.util.Log.w("DriveAuth", "DEVELOPER_ERROR: Drive API/OAuth client (package + SHA-1) not set up in Google Cloud", e)
+            return setup
+        }
     }
 }
 
