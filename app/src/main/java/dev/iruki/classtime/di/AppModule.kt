@@ -13,10 +13,13 @@ import dev.iruki.classtime.data.AppDatabase
 import dev.iruki.classtime.data.CourseDao
 import dev.iruki.classtime.data.RecordingDao
 import dev.iruki.classtime.data.ScheduleExceptionDao
+import dev.iruki.classtime.data.SummaryDao
 import dev.iruki.classtime.data.TermDao
 import dev.iruki.classtime.data.TranscriptDao
 import dev.iruki.classtime.ai.AiSettings
 import dev.iruki.classtime.ai.SecretStore
+import dev.iruki.classtime.ai.SummaryEngine
+import dev.iruki.classtime.ai.SummaryQueue
 import dev.iruki.classtime.ai.TextFiles
 import dev.iruki.classtime.ai.TranscriptFiles
 import dev.iruki.classtime.ai.TranscriptionEngine
@@ -56,6 +59,7 @@ object AppModule {
     @Provides fun provideExceptionDao(db: AppDatabase): ScheduleExceptionDao =
         db.scheduleExceptionDao()
     @Provides fun provideTranscriptDao(db: AppDatabase): TranscriptDao = db.transcriptDao()
+    @Provides fun provideSummaryDao(db: AppDatabase): SummaryDao = db.summaryDao()
 
     // --- 실험적 기능: AI 텍스트 변환 ---
 
@@ -86,7 +90,29 @@ object AppModule {
         settings: AiSettings,
         recordings: RecordingDao,
         files: TextFiles,
-    ): TranscriptionQueue = TranscriptionQueue(context, transcripts, settings, recordings, files)
+        summaries: SummaryDao,
+    ): TranscriptionQueue = TranscriptionQueue(context, transcripts, settings, recordings, files, summaries)
+
+    @Provides
+    @Singleton
+    fun provideSummaryEngine(
+        transcripts: TranscriptDao,
+        summaries: SummaryDao,
+        recordings: RecordingDao,
+        settings: AiSettings,
+        files: TextFiles,
+    ): SummaryEngine = SummaryEngine(transcripts, summaries, recordings, settings, files)
+
+    @Provides
+    @Singleton
+    fun provideSummaryQueue(
+        @ApplicationContext context: Context,
+        summaries: SummaryDao,
+        transcripts: TranscriptDao,
+        recordings: RecordingDao,
+        settings: AiSettings,
+        files: TextFiles,
+    ): SummaryQueue = SummaryQueue(context, summaries, transcripts, recordings, settings, files)
 
     @Provides
     @Singleton

@@ -33,6 +33,7 @@ interface TranscriptionEntryPoint {
     fun recordings(): RecordingDao
     fun queue(): TranscriptionQueue
     fun settings(): AiSettings
+    fun summaryQueue(): SummaryQueue
 }
 
 /**
@@ -84,6 +85,8 @@ class TranscriptionWorker(context: Context, params: WorkerParameters) : Coroutin
             if (t.stateEnum.active) continue
             val rec = deps.recordings().getById(id) ?: continue
             val ok = t.stateEnum == TranscriptState.DONE
+            // 자동 요약이 켜져 있으면 바로 맡긴다(실시간일 필요가 없어 배치로 간다).
+            if (ok) runCatching { deps.summaryQueue().onTranscribed(id) }
             val text = when {
                 ok -> applicationContext.getString(R.string.ai_notif_done)
                 t.errorEnum == TranscriptError.GROQ_KEY -> applicationContext.getString(R.string.ai_notif_key)

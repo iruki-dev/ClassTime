@@ -78,6 +78,7 @@ import dev.iruki.classtime.ui.common.LargeHeader
 import dev.iruki.classtime.ui.common.RowHeadline
 import dev.iruki.classtime.ui.common.ScreenPadding
 import dev.iruki.classtime.ui.share.ExportDialog
+import dev.iruki.classtime.ui.share.RecordingExport
 import dev.iruki.classtime.ui.theme.AppTheme
 import dev.iruki.classtime.ui.theme.CourseIcons
 import dev.iruki.classtime.util.SystemScreens
@@ -101,7 +102,7 @@ fun RecordingsScreen(onOpenPlayer: () -> Unit, onOpenText: (Long) -> Unit) {
 
     var renaming by remember { mutableStateOf<Recording?>(null) }
     var deleting by remember { mutableStateOf<Recording?>(null) }
-    var exporting by remember { mutableStateOf<List<Recording>?>(null) }
+    var exporting by remember { mutableStateOf<Pair<List<Recording>, RecordingExport.Available>?>(null) }
     var reconverting by remember { mutableStateOf<Recording?>(null) }
 
     val all = groups.flatMap { it.second }
@@ -159,10 +160,7 @@ fun RecordingsScreen(onOpenPlayer: () -> Unit, onOpenText: (Long) -> Unit) {
                             icon = icons[subject].orEmpty(),
                             count = recordings.size,
                             totalBytes = recordings.sumOf { it.sizeBytes },
-                            onShareAll = {
-                                if (recordings.any { transcripts[it.id]?.stateEnum == TranscriptState.DONE }) exporting = recordings
-                                else vm.export(recordings)
-                            },
+                            onShareAll = { vm.share(recordings) { exporting = recordings to it } },
                         )
                     }
                     itemsIndexed(recordings, key = { _, r -> r.id }) { i, recording ->
@@ -178,10 +176,7 @@ fun RecordingsScreen(onOpenPlayer: () -> Unit, onOpenText: (Long) -> Unit) {
                                 if (playback.recordingId != recording.id) vm.toggle(recording)
                                 onOpenPlayer()
                             },
-                            onShare = {
-                                if (transcripts[recording.id]?.stateEnum == TranscriptState.DONE) exporting = listOf(recording)
-                                else vm.export(listOf(recording))
-                            },
+                            onShare = { vm.share(listOf(recording)) { exporting = listOf(recording) to it } },
                             onRename = { renaming = recording },
                             onDelete = { deleting = recording },
                             transcript = transcripts[recording.id],
@@ -220,10 +215,11 @@ fun RecordingsScreen(onOpenPlayer: () -> Unit, onOpenText: (Long) -> Unit) {
         )
     }
 
-    exporting?.let { list ->
+    exporting?.let { (list, available) ->
         ExportDialog(
+            available = available,
             onDismiss = { exporting = null },
-            onSend = { audio, text -> vm.export(list, audio, text); exporting = null },
+            onSend = { audio, text, summary -> vm.export(list, audio, text, summary); exporting = null },
         )
     }
 

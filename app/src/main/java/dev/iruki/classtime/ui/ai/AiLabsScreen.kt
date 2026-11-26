@@ -1,6 +1,14 @@
 package dev.iruki.classtime.ui.ai
 
 import androidx.compose.foundation.layout.Arrangement
+import dev.iruki.classtime.ai.SummaryModel
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material.icons.rounded.Summarize
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -69,7 +77,9 @@ fun AiLabsScreen(onBack: () -> Unit) {
     val config by vm.config.collectAsStateWithLifecycle()
     val queue by vm.queueItems.collectAsStateWithLifecycle()
     val quota by vm.quota.collectAsStateWithLifecycle()
-    var keySheet by remember { mutableStateOf(false) }
+    val summaryUsage by vm.summaryUsage.collectAsStateWithLifecycle()
+    var keySheet by remember { mutableStateOf<KeyProvider?>(null) }
+    var modelPicker by remember { mutableStateOf(false) }
     val hasGroq = config.groqKeyHint != null
 
     val keyRows = listOf<LabsRow>(
@@ -78,7 +88,35 @@ fun AiLabsScreen(onBack: () -> Unit) {
                 i, n, Icons.Rounded.GraphicEq, "Groq",
                 summary = keySummary(R.string.ai_key_groq_role, config.groqKeyHint, config.groqRejected, required = true),
                 attention = !hasGroq || config.groqRejected,
-            ) { keySheet = true }
+            ) { keySheet = KeyProvider.GROQ }
+        },
+        { i, n ->
+            KeyRow(
+                i, n, Icons.Rounded.Summarize, "Claude",
+                summary = keySummary(R.string.ai_key_claude_role, config.claudeKeyHint, config.claudeRejected, required = false),
+                attention = config.claudeRejected,
+            ) { keySheet = KeyProvider.CLAUDE }
+        },
+    )
+
+    val summaryRows = listOf<LabsRow>(
+        { i, n ->
+            GroupRow(
+                index = i, count = n,
+                onClick = { vm.setAutoSummarize(!config.autoSummarize) },
+                leading = { RowIcon(Icons.Rounded.Bolt) },
+                trailing = { AppSwitch(config.autoSummarize, vm::setAutoSummarize) },
+                minHeight = 56.dp,
+            ) { RowHeadline(stringResource(R.string.summary_auto)) }
+        },
+        { i, n ->
+            GroupRow(
+                index = i, count = n,
+                onClick = { modelPicker = true },
+                leading = { RowIcon(Icons.Rounded.Tune) },
+                supporting = { RowSupporting(stringResource(modelName(config.summaryModel))) },
+                trailing = { RowIcon(Icons.AutoMirrored.Rounded.KeyboardArrowRight) },
+            ) { RowHeadline(stringResource(R.string.summary_model)) }
         },
     )
 
@@ -95,6 +133,9 @@ fun AiLabsScreen(onBack: () -> Unit) {
     )
 
     val queueAside = stringResource(R.string.ai_queue_count, queue.size)
+    val summaryAside = if (summaryUsage.count > 0) {
+        stringResource(R.string.summary_usage, summaryUsage.count, "%.2f".format(summaryUsage.dollars))
+    } else null
 
     Scaffold(
         containerColor = AppTheme.colors.page,
@@ -115,6 +156,7 @@ fun AiLabsScreen(onBack: () -> Unit) {
             section("keys", R.string.ai_section_keys, null, keyRows)
             if (config.enabled) {
                 section("convert", R.string.ai_section_convert, null, convertRows)
+                if (config.summaryEnabled) section("summary", R.string.summary_section, summaryAside, summaryRows)
                 if (queue.isNotEmpty()) {
                     val rows = queue.map<QueueItem, LabsRow> { q -> { i, n -> QueueRow(i, n, q, onCancel = { vm.cancel(q.recording.id) }) } }
                     section("queue", R.string.ai_section_queue, queueAside, rows)
@@ -126,11 +168,20 @@ fun AiLabsScreen(onBack: () -> Unit) {
         }
     }
 
-    if (keySheet) {
+    keySheet?.let { provider ->
         KeySheet(
-            savedHint = config.groqKeyHint,
+            provider = provider,
+            savedHint = if (provider == KeyProvider.GROQ) config.groqKeyHint else config.claudeKeyHint,
             vm = vm,
-            onDismiss = { keySheet = false; vm.resetKeyCheck() },
+            onDismiss = { keySheet = null; vm.resetKeyCheck() },
+        )
+    }
+
+    if (modelPicker) {
+        ModelPicker(
+            current = config.summaryModel,
+            onPick = { vm.setSummaryModel(it); modelPicker = false },
+            onDismiss = { modelPicker = false },
         )
     }
 }
@@ -323,4 +374,43 @@ private fun LazyListScope.section(key: String, title: Int, aside: String?, rows:
 @Composable
 private fun RowIcon(icon: ImageVector) {
     Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+}
+
+/** 요약 모델 고르기. 고른 모델은 다음 요약부터. */
+@Composable
+private fun ModelPicker(current: SummaryModel, onPick: (SummaryModel) -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.summary_model)) },
+        text = {
+            Column(Modifier.selectableGroup()) {
+                SummaryModel.entries.forEach { m ->
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 64.dp)
+                            .selectable(selected = m == current, role = Role.RadioButton) { onPick(m) },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(selected = m == current, onClick = null)
+                        Column(Modifier.padding(start = 16.dp)) {
+                            Text(stringResource(modelName(m)), style = MaterialTheme.typography.bodyLarge)
+                            Text(
+                                stringResource(
+                                    when (m) {
+                                        SummaryModel.OPUS -> R.string.summary_model_opus_hint
+                                        SummaryModel.SONNET -> R.string.summary_model_sonnet_hint
+                                        SummaryModel.HAIKU -> R.string.summary_model_haiku_hint
+                                    }
+                                ),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) } },
+    )
 }

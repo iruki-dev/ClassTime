@@ -22,6 +22,7 @@ import androidx.compose.material.icons.rounded.ContentPaste
 import androidx.compose.material.icons.rounded.Error
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.Policy
+import androidx.compose.material.icons.rounded.Summarize
 import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.AlertDialog
@@ -62,21 +63,22 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.iruki.classtime.R
 
 /**
- * Groq 키 넣기 시트. ‘확인하고 저장’을 누르면 키를 실제로 한 번 써 보고, 되는 키만 저장한다.
+ * API 키 넣기 시트(Groq: 받아 적기, Claude: 요약). ‘확인하고 저장’을 누르면 키를 실제로 한 번 써 보고, 되는 키만 저장한다.
  * 처음 넣으면 저장 전에 외부 전송 안내를 띄운다.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun KeySheet(savedHint: String?, vm: AiLabsViewModel, onDismiss: () -> Unit) {
+internal fun KeySheet(provider: KeyProvider, savedHint: String?, vm: AiLabsViewModel, onDismiss: () -> Unit) {
     val c = MaterialTheme.colorScheme
     val check by vm.keyCheck.collectAsStateWithLifecycle()
     var key by rememberSaveable { mutableStateOf("") }
     var visible by remember { mutableStateOf(false) }
     val clipboard = LocalClipboardManager.current
     val uri = LocalUriHandler.current
-    val name = "Groq"
-    val host = "console.groq.com"
-    val url = "https://console.groq.com/keys"
+    val groq = provider == KeyProvider.GROQ
+    val name = if (groq) "Groq" else "Claude"
+    val host = if (groq) "console.groq.com" else "platform.claude.com"
+    val url = if (groq) "https://console.groq.com/keys" else "https://platform.claude.com/settings/keys"
 
     LaunchedEffect(check) { if (check == KeyCheck.Saved) onDismiss() }
 
@@ -94,13 +96,13 @@ internal fun KeySheet(savedHint: String?, vm: AiLabsViewModel, onDismiss: () -> 
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 Surface(color = c.secondaryContainer, contentColor = c.onSecondaryContainer, shape = MaterialTheme.shapes.large, modifier = Modifier.size(48.dp)) {
                     Box(contentAlignment = Alignment.Center) {
-                        Icon(Icons.Rounded.GraphicEq, contentDescription = null)
+                        Icon(if (groq) Icons.Rounded.GraphicEq else Icons.Rounded.Summarize, contentDescription = null)
                     }
                 }
                 Column {
                     Text(stringResource(R.string.ai_key_title, name), style = MaterialTheme.typography.titleLarge)
                     Text(
-                        stringResource(R.string.ai_key_groq_detail),
+                        stringResource(if (groq) R.string.ai_key_groq_detail else R.string.ai_key_claude_detail),
                         style = MaterialTheme.typography.bodyMedium,
                         color = c.onSurfaceVariant,
                     )
@@ -157,7 +159,7 @@ internal fun KeySheet(savedHint: String?, vm: AiLabsViewModel, onDismiss: () -> 
 
             val checking = check == KeyCheck.Checking
             Button(
-                onClick = { vm.checkKey(key) },
+                onClick = { vm.checkKey(provider, key) },
                 enabled = key.isNotBlank() && !checking,
                 modifier = Modifier.fillMaxWidth().height(56.dp).padding(top = 0.dp),
             ) {
@@ -171,7 +173,7 @@ internal fun KeySheet(savedHint: String?, vm: AiLabsViewModel, onDismiss: () -> 
             }
             Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.Center) {
                 if (savedHint != null) {
-                    TextButton(onClick = { vm.deleteKey() }) {
+                    TextButton(onClick = { vm.deleteKey(provider) }) {
                         Text(stringResource(R.string.ai_key_delete), color = c.error)
                     }
                 }
@@ -181,21 +183,23 @@ internal fun KeySheet(savedHint: String?, vm: AiLabsViewModel, onDismiss: () -> 
     }
 
     (check as? KeyCheck.NeedsConsent)?.let {
-        ConsentDialog(onAccept = vm::acceptConsent, onDismiss = vm::resetKeyCheck)
+        ConsentDialog(it.provider, onAccept = vm::acceptConsent, onDismiss = vm::resetKeyCheck)
     }
 }
 
 /** 처음 켤 때 한 번: 녹음과 글이 어디로 가는지. */
 @Composable
-private fun ConsentDialog(onAccept: () -> Unit, onDismiss: () -> Unit) {
+private fun ConsentDialog(provider: KeyProvider, onAccept: () -> Unit, onDismiss: () -> Unit) {
+    val groq = provider == KeyProvider.GROQ
     val c = MaterialTheme.colorScheme
     AlertDialog(
         onDismissRequest = onDismiss,
         icon = { Icon(Icons.Rounded.CloudUpload, contentDescription = null) },
-        title = { Text(stringResource(R.string.ai_consent_title)) },
+        title = { Text(stringResource(if (groq) R.string.ai_consent_title else R.string.ai_consent_summary_title)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                ConsentLine(Icons.Rounded.GraphicEq, "Groq", stringResource(R.string.ai_consent_groq))
+                if (groq) ConsentLine(Icons.Rounded.GraphicEq, "Groq", stringResource(R.string.ai_consent_groq))
+                else ConsentLine(Icons.Rounded.Summarize, "Claude", stringResource(R.string.ai_consent_claude))
                 ConsentLine(Icons.Rounded.Policy, stringResource(R.string.ai_consent_terms_k), stringResource(R.string.ai_consent_terms), joined = true)
             }
         },

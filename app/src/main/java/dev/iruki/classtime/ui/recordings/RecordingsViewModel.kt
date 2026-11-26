@@ -105,7 +105,13 @@ class RecordingsViewModel @Inject constructor(
      * 다른 앱(드라이브, 메일, 카톡 등)으로 보내기. PC 로 옮기는 또 하나의 경로.
      * 여러 개면 과목 폴더 통째로. 텍스트가 있으면 화면이 무엇을 보낼지 먼저 묻는다.
      */
-    fun export(recordings: List<Recording>, audio: Boolean = true, text: Boolean = false) =
-        viewModelScope.launch { export.send(recordings, audio, text) }
+    fun export(recordings: List<Recording>, audio: Boolean, text: Boolean, summary: Boolean) =
+        viewModelScope.launch { export.send(recordings, audio, text, summary) }
+
+    /** 보내기: 텍스트·요약이 없으면 녹음만 바로, 있으면 [onChoose] 로 무엇을 보낼지 묻는다. */
+    fun share(recordings: List<Recording>, onChoose: (RecordingExport.Available) -> Unit) = viewModelScope.launch {
+        val a = export.available(recordings)
+        if (a.text || a.summary) onChoose(a) else export.send(recordings, audio = true, text = false)
+    }
 
 }

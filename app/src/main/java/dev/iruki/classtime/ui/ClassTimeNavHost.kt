@@ -57,6 +57,7 @@ import dev.iruki.classtime.ui.player.PlayerText
 import dev.iruki.classtime.ui.ai.AiLabsScreen
 import dev.iruki.classtime.ui.ai.ReconvertDialog
 import dev.iruki.classtime.ui.share.ExportDialog
+import dev.iruki.classtime.ui.share.RecordingExport
 import dev.iruki.classtime.ui.player.PlayerViewModel
 import dev.iruki.classtime.ui.recordings.RecordingsScreen
 import dev.iruki.classtime.ui.settings.SettingsScreen
@@ -91,6 +92,8 @@ fun ClassTimeNavHost(
     setupIssues: List<SetupIssue>,
     onResolveIssue: (SetupIssue) -> Unit,
     openTranscript: Long? = null,
+    /** [openTranscript] 를 요약 탭으로 연다(요약 알림). */
+    openSummary: Boolean = false,
     onTranscriptOpened: () -> Unit = {},
 ) {
     val navController = rememberNavController()
@@ -104,8 +107,9 @@ fun ClassTimeNavHost(
     val styles by playerVm.styles.collectAsStateWithLifecycle()
     val ai by playerVm.ai.collectAsStateWithLifecycle()
     val transcript by playerVm.transcript.collectAsStateWithLifecycle()
+    val summary by playerVm.summary.collectAsStateWithLifecycle()
     var playerOpen by remember { mutableStateOf(false) }
-    var exportingNow by remember { mutableStateOf(false) }
+    var exportingNow by remember { mutableStateOf<RecordingExport.Available?>(null) }
     var reconvertingNow by remember { mutableStateOf(false) }
     // 플레이어에서 마지막으로 본 탭. 다시 열면 그 탭으로 열린다.
     var playerTab by rememberSaveable { mutableStateOf(PlayerTab.AUDIO) }
@@ -133,15 +137,16 @@ fun ClassTimeNavHost(
     }
 
     // 텍스트를 열어야 할 때(변환 알림, 목록의 ‘텍스트 보기’): 녹음을 올리고 텍스트 탭으로.
-    val openText: (Long) -> Unit = { id ->
+    val openTab: (Long, PlayerTab) -> Unit = { id, tab ->
         playerVm.openForText(id) {
-            playerTab = PlayerTab.TEXT
+            playerTab = tab
             playerOpen = true
         }
     }
+    val openText: (Long) -> Unit = { id -> openTab(id, PlayerTab.TEXT) }
     LaunchedEffect(openTranscript) {
         openTranscript?.let {
-            openText(it)
+            openTab(it, if (openSummary) PlayerTab.SUMMARY else PlayerTab.TEXT)
             onTranscriptOpened()
         }
     }
@@ -246,10 +251,12 @@ fun ClassTimeNavHost(
         }
     }
 
-    if (exportingNow && nowPlaying != null) {
+    val exportChoice = exportingNow
+    if (exportChoice != null && nowPlaying != null) {
         ExportDialog(
-            onDismiss = { exportingNow = false },
-            onSend = { audio, text -> playerVm.export(nowPlaying, audio, text); exportingNow = false },
+            available = exportChoice,
+            onDismiss = { exportingNow = null },
+            onSend = { audio, text, summary -> playerVm.export(nowPlaying, audio, text, summary); exportingNow = null },
         )
     }
     if (reconvertingNow && nowPlaying != null) {
@@ -269,7 +276,7 @@ fun ClassTimeNavHost(
             onSeek = playerVm::seekTo,
             onSeekBy = playerVm::seekBy,
             onSpeed = playerVm::setSpeed,
-            onShare = { if (transcript?.done == true) exportingNow = true else playerVm.export(nowPlaying) },
+            onShare = { playerVm.share(nowPlaying) { exportingNow = it } },
             onOpenFolder = playerVm::openFolder,
             onDelete = {
                 playerOpen = false
@@ -287,6 +294,10 @@ fun ClassTimeNavHost(
                 onDeleteText = { playerVm.deleteText(nowPlaying.id) },
                 onCopy = { playerVm.copyText(nowPlaying, it) },
                 onShare = { playerVm.shareText(nowPlaying, it) },
+                summary = summary,
+                onSummarize = { playerVm.summarize(nowPlaying.id) },
+                onDeleteSummary = { playerVm.deleteSummary(nowPlaying.id) },
+                onCopySummary = { summary?.let { playerVm.copySummary(nowPlaying, it) } },
                 onOpenLabs = {
                     playerOpen = false
                     navController.navigate(ROUTE_AI)

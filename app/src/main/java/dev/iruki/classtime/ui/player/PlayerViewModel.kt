@@ -13,6 +13,9 @@ import dev.iruki.classtime.R
 import dev.iruki.classtime.ai.AiConfig
 import dev.iruki.classtime.ai.AiSettings
 import dev.iruki.classtime.ai.Paragraph
+import dev.iruki.classtime.ai.SummaryJson
+import dev.iruki.classtime.ai.SummaryQueue
+import dev.iruki.classtime.ai.TranscriptJson
 import dev.iruki.classtime.ai.TranscriptText
 import dev.iruki.classtime.ai.TranscriptionQueue
 import dev.iruki.classtime.ui.share.RecordingExport
@@ -21,6 +24,8 @@ import dev.iruki.classtime.audio.PlaybackState
 import dev.iruki.classtime.audio.RecordingStorage
 import dev.iruki.classtime.data.ClassTimeRepository
 import dev.iruki.classtime.data.Recording
+import dev.iruki.classtime.data.TranscriptState
+import dev.iruki.classtime.ui.ai.SummaryView
 import dev.iruki.classtime.ui.ai.TranscriptView
 import dev.iruki.classtime.util.SystemScreens
 import javax.inject.Inject
@@ -54,6 +59,7 @@ class PlayerViewModel @Inject constructor(
     private val repo: ClassTimeRepository,
     private val queue: TranscriptionQueue,
     private val exporter: RecordingExport,
+    private val summaries: SummaryQueue,
     aiSettings: AiSettings,
 ) : ViewModel() {
 
@@ -80,6 +86,21 @@ class PlayerViewModel @Inject constructor(
                     val ahead = all.count { it.stateEnum.active && it.recordingId != id && it.queuedAt < mine.queuedAt }
                     TranscriptView.of(mine, ahead)
                 }
+            }
+        }
+        .flowOn(Dispatchers.Default)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /** 지금 플레이어에 올라 있는 녹음의 요약(과 요약할 수 있는지). */
+    val summary: StateFlow<SummaryView?> = player.state
+        .map { it.recordingId }
+        .distinctUntilChanged()
+        .flatMapLatest { id ->
+            if (id < 0) flowOf(null)
+            else combine(summaries.observe(id), queue.observe(id)) { s, t ->
+                val done = t?.stateEnum == TranscriptState.DONE
+                val starts = if (done) TranscriptJson.paragraphs(t!!.paragraphs).map { it.startMs } else emptyList()
+                SummaryView.of(s, starts, done)
             }
         }
         .flowOn(Dispatchers.Default)
@@ -112,8 +133,14 @@ class PlayerViewModel @Inject constructor(
     }
 
     /** 보내기. 텍스트가 있으면 화면이 무엇을 보낼지 먼저 묻는다. */
-    fun export(recording: Recording, audio: Boolean = true, text: Boolean = false) =
-        viewModelScope.launch { exporter.send(listOf(recording), audio, text) }
+    fun export(recording: Recording, audio: Boolean, text: Boolean, summary: Boolean) =
+        viewModelScope.launch { exporter.send(listOf(recording), audio, text, summary) }
+
+    /** 보내기: 텍스트·요약이 없으면 녹음만 바로, 있으면 [onChoose] 로 무엇을 보낼지 묻는다. */
+    fun share(recording: Recording, onChoose: (RecordingExport.Available) -> Unit) = viewModelScope.launch {
+        val a = exporter.available(listOf(recording))
+        if (a.text || a.summary) onChoose(a) else exporter.send(listOf(recording), audio = true, text = false)
+    }
 
     // --- 텍스트 ---
 
@@ -125,6 +152,19 @@ class PlayerViewModel @Inject constructor(
     fun reconvert(recordingId: Long) = viewModelScope.launch { queue.enqueue(recordingId) }
 
     fun deleteText(recordingId: Long) = viewModelScope.launch { queue.remove(recordingId) }
+
+    // --- 요약 ---
+
+    /** 요약을 맡긴다(끝난 것도 처음부터 다시). */
+    fun summarize(recordingId: Long) = viewModelScope.launch { summaries.enqueue(recordingId) }
+    fun deleteSummary(recordingId: Long) = viewModelScope.launch { summaries.remove(recordingId) }
+
+    fun copySummary(recording: Recording, view: SummaryView) {
+        val content = view.content ?: return
+        val cm = app.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        val text = SummaryJson.format(recording, content) { view.starts.getOrNull(it) }.trimEnd()
+        cm.setPrimaryClip(ClipData.newPlainText(recording.subject, text))
+    }
 
     fun copyText(recording: Recording, paragraphs: List<Paragraph>) {
         val cm = app.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager

@@ -351,6 +351,9 @@ dependencies {
     // 실험적 기능 ‘AI 텍스트 변환’의 대기열. 한도 대기·네트워크 복구 후에도 이어서 처리한다.
     implementation(libs.androidx.work.runtime)
 
+    // 실험적 기능 ‘강의 요약’: Claude API(공식 SDK). 릴리스 축소 규칙은 SDK 가 함께 싣는다.
+    implementation(libs.anthropic.java)
+
     implementation(libs.hilt.android)
     implementation(libs.androidx.hilt.navigation.compose)
     ksp(libs.hilt.compiler)
@@ -366,6 +369,7 @@ dependencies {
     testImplementation(libs.androidx.room.testing)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.truth)
+    testImplementation(libs.okhttp.mockwebserver)
     testImplementation(libs.androidx.work.testing)
     testImplementation(libs.hilt.android.testing)
     kspTest(libs.hilt.compiler)

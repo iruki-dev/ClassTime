@@ -8,6 +8,7 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import dev.iruki.classtime.data.Recording
 import dev.iruki.classtime.data.RecordingDao
+import dev.iruki.classtime.data.SummaryDao
 import dev.iruki.classtime.data.Transcript
 import dev.iruki.classtime.data.TranscriptDao
 import dev.iruki.classtime.data.TranscriptState
@@ -27,6 +28,7 @@ class TranscriptionQueue(
     private val settings: AiSettings,
     private val recordings: RecordingDao,
     private val files: TextFiles,
+    private val summaries: SummaryDao,
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
 
@@ -40,14 +42,19 @@ class TranscriptionQueue(
     suspend fun enqueue(recordingId: Long) {
         val existing = dao.get(recordingId)
         if (existing != null && existing.stateEnum.active) return
+        // 다시 변환하면 문단 번호가 바뀌어 예전 요약의 원문 연결이 어긋난다. 요약은 새 텍스트로 다시 한다.
+        if (existing != null) summaries.delete(recordingId)
         dao.upsert(Transcript(recordingId = recordingId, queuedAt = clock(), correct = false))
         kick()
     }
 
-    /** 대기 중이거나 진행 중인 작업을 멈추고 지운다. 끝난 결과도 이것으로 지운다(텍스트 파일까지). */
+    /** 대기 중이거나 진행 중인 작업을 멈추고 지운다. 끝난 결과도 이것으로 지운다(텍스트·요약과 그 파일까지). */
     suspend fun remove(recordingId: Long) {
         dao.delete(recordingId)
-        recordings.getById(recordingId)?.let { runCatching { files.delete(it) } }
+        summaries.delete(recordingId)
+        recordings.getById(recordingId)?.let { rec ->
+            TextKind.entries.forEach { kind -> runCatching { files.delete(rec, kind) } }
+        }
     }
 
     /** 이 기능이 생기기 전에 끝난 변환도 텍스트 파일로 남긴다(한 번만). */
