@@ -93,7 +93,7 @@ import dev.iruki.classtime.ui.theme.AppTheme
 private typealias LabsRow = @Composable (Int, Int) -> Unit
 
 /**
- * 설정 › 실험적 기능 › AI 텍스트 변환. 맨 위 큰 ‘사용’ 스위치가 기능 전체를 켜고 끈다(Groq 키가
+ * 설정 › 실험적 기능. 맨 위 큰 ‘사용’ 스위치가 기능 전체를 켜고 끈다(Groq 키가
  * 있어야 켤 수 있다). 그 아래 키 · 변환 옵션 · 대기열 · 무료 한도.
  */
 @Composable
@@ -256,7 +256,6 @@ fun AiLabsScreen(onBack: () -> Unit) {
         },
     ) { inner ->
         LazyColumn(Modifier.padding(inner), contentPadding = PaddingValues(bottom = 24.dp)) {
-            item(key = "badge") { ExperimentalBadge() }
             item(key = "main") {
                 MainSwitch(
                     on = config.enabled,
@@ -423,24 +422,6 @@ private fun MainSwitch(on: Boolean, enabled: Boolean, onChange: (Boolean) -> Uni
                 }
             }
             AppSwitch(checked = on, onCheckedChange = null, enabled = enabled)
-        }
-    }
-}
-
-@Composable
-private fun ExperimentalBadge() {
-    Row(Modifier.padding(horizontal = ScreenPadding + 4.dp)) {
-        Surface(
-            shape = MaterialTheme.shapes.small,
-            color = MaterialTheme.colorScheme.surface.copy(alpha = 0f),
-            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-        ) {
-            Text(
-                stringResource(R.string.ai_badge),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-            )
         }
     }
 }

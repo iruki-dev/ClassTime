@@ -229,7 +229,7 @@ fun SettingsScreen(
                     )
                 },
                 trailing = { RowIcon(Icons.AutoMirrored.Rounded.KeyboardArrowRight) },
-            ) { RowHeadline(stringResource(R.string.ai_title)) }
+            ) { RowHeadline(stringResource(R.string.settings_labs_row)) }
         },
     )
 

@@ -45,7 +45,7 @@
     <string name="channel_reminder_desc">수업이 시작되기 전에 알려 드려요.</string>
     <string name="channel_transcription_name">텍스트 변환</string>
 
-    <!-- ===== AI 텍스트 변환(실험적 기능) · 알림 ===== -->
+    <!-- ===== 실험적 기능(텍스트 변환·요약) · 알림 ===== -->
     <string name="ai_stage_preparing">나누는 중</string>
     <string name="ai_stage_transcribing">받아 적는 중</string>
     <string name="ai_notif_done">텍스트 변환이 끝났어요</string>
@@ -420,10 +420,10 @@
     <!-- ===== 기타 ===== -->
     <string name="exception_holiday">공휴일</string>
 
-    <!-- ===== AI 텍스트 변환(실험적 기능) · 화면 ===== -->
+    <!-- ===== 실험적 기능 · 화면 ===== -->
     <string name="settings_section_labs">실험적 기능</string>
-    <string name="ai_title">AI 텍스트 변환</string>
-    <string name="ai_badge">실험적</string>
+    <string name="ai_title">실험적 기능</string>
+    <string name="settings_labs_row">텍스트 변환 · 요약 · Drive</string>
     <string name="ai_summary_on">켜짐</string>
     <string name="ai_summary_on_queue">켜짐 · 대기 %1$d개</string>
     <string name="ai_summary_off">꺼짐</string>
@@ -619,8 +619,6 @@
     <string name="ai_reconvert_confirm">다시 변환</string>
     <string name="ai_copied">텍스트를 복사했어요</string>
     <string name="ai_status_done">텍스트 있음</string>
-    <string name="badge_text">텍스트</string>
-    <string name="badge_summary">요약</string>
     <string name="badge_summary_cd">요약 있음</string>
     <string name="ai_status_working">텍스트 변환 중</string>
     <string name="ai_status_queued">텍스트 변환 대기 중</string>
